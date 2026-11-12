@@ -1,6 +1,5 @@
 import React from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { isFirebaseConfigured } from '../firebase';
 import { 
   Info,
   CheckCircle2, 
@@ -15,7 +14,6 @@ import {
   ArrowRight,
   Layers,
   MessageCircle,
-  HardDrive,
   UtensilsCrossed
 } from 'lucide-react';
 
@@ -89,34 +87,17 @@ export default function HomeView({ setActiveTab }) {
       <div className="bg-white rounded-3xl border border-zinc-200 p-6 sm:p-8 shadow-sm space-y-8">
         
         {/* Cabecera de la sección */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-6">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-xs font-semibold text-zinc-700">
-              <Info className="w-3.5 h-3.5 text-zinc-900" />
-              <span>Plataforma Operativa</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight font-display">
-              Información Básica del Sistema
-            </h2>
-            <p className="text-sm text-zinc-500 max-w-2xl leading-relaxed">
-              Sistema integral diseñado para la gestión de cocina, control de existencias en almacén y automatización de pedidos a proveedores para <strong>LIACO PIZZERIA</strong>.
-            </p>
+        <div className="border-b border-zinc-100 pb-6 space-y-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-xs font-semibold text-zinc-700">
+            <Info className="w-3.5 h-3.5 text-zinc-900" />
+            <span>Plataforma Operativa</span>
           </div>
-
-          {/* Estado de sincronización en vivo */}
-          <div className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs font-medium text-zinc-700">
-            {isFirebaseConfigured ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Base de datos: <strong>Firebase Cloud</strong></span>
-              </>
-            ) : (
-              <>
-                <HardDrive className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Almacenamiento: <strong>Memoria Local</strong></span>
-              </>
-            )}
-          </div>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight font-display">
+            Información Básica del Sistema
+          </h2>
+          <p className="text-sm text-zinc-500 max-w-2xl leading-relaxed">
+            Sistema integral diseñado para la gestión de cocina, control de existencias en almacén y automatización de pedidos a proveedores para <strong>LIACO PIZZERIA</strong>.
+          </p>
         </div>
 
         {/* Ficha técnica del sistema (3 columnas) */}
