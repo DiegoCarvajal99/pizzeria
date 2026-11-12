@@ -16,7 +16,8 @@ import {
   Flame, 
   X, 
   Check, 
-  Settings 
+  Settings,
+  UtensilsCrossed
 } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
@@ -28,6 +29,10 @@ export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
   const [projectId, setProjectId] = useState(firebaseConfig.projectId || '');
   const [authDomain, setAuthDomain] = useState(firebaseConfig.authDomain || '');
   const [appId, setAppId] = useState(firebaseConfig.appId || '');
+  const [storageBucket, setStorageBucket] = useState(firebaseConfig.storageBucket || '');
+  const [messagingSenderId, setMessagingSenderId] = useState(firebaseConfig.messagingSenderId || '');
+  const [modoSnippet, setModoSnippet] = useState(false);
+  const [snippetPegado, setSnippetPegado] = useState('');
 
   // Contar pedidos pendientes de confirmación
   const pedidosPendientes = pedidos.filter(p => p.estado === 'pendiente' || p.estado === 'parcial');
@@ -35,13 +40,40 @@ export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
     return acc + p.grupos.reduce((gAcc, g) => gAcc + g.items.filter(i => !i.recibido).length, 0);
   }, 0);
 
-  // Opciones del menú unificadas: Home, Pedidos, Stock Actual, Productos
+  // Opciones del menú unificadas: Home, Pedidos, Consumo Cocina, Productos
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart, badge: itemsPendientesCount, badgeColor: 'bg-amber-500 text-black' },
-    { id: 'stock', label: 'Stock Actual', icon: ClipboardList },
+    { id: 'stock', label: 'Consumo Cocina', icon: UtensilsCrossed },
     { id: 'catalogo', label: 'Productos', icon: Boxes }
   ];
+
+  // Extraer valores automáticamente si el usuario pega el bloque entero de Firebase Console
+  const procesarSnippetFirebase = (texto) => {
+    if (!texto) return;
+    const extraer = (clave) => {
+      const match = texto.match(new RegExp(`['"]?${clave}['"]?\\s*:\\s*['"\`]([^'"\`]+)['"\`]`));
+      return match ? match[1].trim() : '';
+    };
+
+    const nApiKey = extraer('apiKey');
+    const nProjectId = extraer('projectId');
+    const nAuthDomain = extraer('authDomain');
+    const nAppId = extraer('appId');
+    const nStorageBucket = extraer('storageBucket');
+    const nMessagingSenderId = extraer('messagingSenderId');
+
+    if (nApiKey) setApiKey(nApiKey);
+    if (nProjectId) setProjectId(nProjectId);
+    if (nAuthDomain) setAuthDomain(nAuthDomain);
+    if (nAppId) setAppId(nAppId);
+    if (nStorageBucket) setStorageBucket(nStorageBucket);
+    if (nMessagingSenderId) setMessagingSenderId(nMessagingSenderId);
+
+    if (nApiKey && nProjectId) {
+      setModoSnippet(false);
+    }
+  };
 
   const handleGuardarFirebase = (e) => {
     e.preventDefault();
@@ -54,7 +86,8 @@ export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
       apiKey: apiKey.trim(),
       projectId: projectId.trim(),
       authDomain: authDomain.trim() || `${projectId.trim()}.firebaseapp.com`,
-      storageBucket: `${projectId.trim()}.appspot.com`,
+      storageBucket: storageBucket.trim() || `${projectId.trim()}.appspot.com`,
+      messagingSenderId: messagingSenderId.trim() || '',
       appId: appId.trim() || "1:demo:web:app"
     });
   };
@@ -163,9 +196,43 @@ export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
               </button>
             </div>
 
-            <p className="text-xs text-zinc-600 leading-relaxed">
-              Para sincronizar tu inventario en tiempo real en todos los dispositivos de la pizzería, ingresa los datos de tu proyecto de Firebase Console:
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-zinc-600 leading-relaxed">
+                Ingresa tus credenciales de Firebase Console para sincronizar el inventario en vivo:
+              </p>
+              <button
+                type="button"
+                onClick={() => setModoSnippet(!modoSnippet)}
+                className="text-[11px] font-semibold text-zinc-600 hover:text-black underline cursor-pointer shrink-0 ml-2"
+              >
+                {modoSnippet ? "Ver campos separados" : "📋 Pegar bloque completo"}
+              </button>
+            </div>
+
+            {modoSnippet ? (
+              <div className="space-y-3 bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
+                <label className="block text-xs font-bold text-zinc-700">
+                  Pega aquí el código copiado de Firebase Console:
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  projectId: "mi-pizzeria",\n  ...\n};`}
+                  value={snippetPegado}
+                  onChange={(e) => {
+                    setSnippetPegado(e.target.value);
+                    procesarSnippetFirebase(e.target.value);
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-xs font-mono text-zinc-900 focus:outline-none focus:border-black"
+                />
+                <button
+                  type="button"
+                  onClick={() => procesarSnippetFirebase(snippetPegado)}
+                  className="w-full py-1.5 bg-black text-white rounded-xl text-xs font-bold hover:bg-zinc-800 cursor-pointer"
+                >
+                  Extraer datos automáticamente
+                </button>
+              </div>
+            ) : null}
 
             <form onSubmit={handleGuardarFirebase} className="space-y-3">
               <div>
@@ -192,26 +259,27 @@ export default function Navbar({ activeTab, setActiveTab, cartCount = 0 }) {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">Auth Domain (Opcional)</label>
-                <input
-                  type="text"
-                  placeholder="mi-pizzeria-inventario.firebaseapp.com"
-                  value={authDomain}
-                  onChange={(e) => setAuthDomain(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-900 focus:outline-none focus:border-black"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">App ID (Opcional)</label>
-                <input
-                  type="text"
-                  placeholder="1:123456789:web:abcdef"
-                  value={appId}
-                  onChange={(e) => setAppId(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-900 focus:outline-none focus:border-black"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">Auth Domain (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="mi-pizzeria.firebaseapp.com"
+                    value={authDomain}
+                    onChange={(e) => setAuthDomain(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-900 focus:outline-none focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">App ID (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="1:123456789:web:abcdef"
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-mono text-zinc-900 focus:outline-none focus:border-black"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 flex items-center justify-between border-t border-zinc-200">

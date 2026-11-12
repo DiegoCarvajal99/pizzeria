@@ -13,11 +13,20 @@ import {
   Search, 
   X, 
   Boxes, 
-  Store
+  Store,
+  Trash2
 } from 'lucide-react';
 
 export default function GestionProductosView() {
-  const { productos, proveedores, agregarProducto, toggleHabilitarProducto, agregarProveedor } = useInventory();
+  const { 
+    productos, 
+    proveedores, 
+    agregarProducto, 
+    eliminarProducto,
+    toggleHabilitarProducto, 
+    agregarProveedor,
+    limpiarDatosDePrueba 
+  } = useInventory();
 
   // Estados de control de modales
   const [modalNuevoAbierto, setModalNuevoAbierto] = useState(false);
@@ -202,18 +211,32 @@ export default function GestionProductosView() {
           </p>
         </div>
 
-        {/* BOTÓN REQUERIDO: "Nuevo Producto" */}
-        <button
-          type="button"
-          onClick={() => {
-            setSeccionModal('manual');
-            setModalNuevoAbierto(true);
-          }}
-          className="px-4 py-2.5 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nuevo Producto</span>
-        </button>
+        {/* BOTONES DE ACCIÓN: Nuevo Producto & Limpiar Datos de Prueba */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {productos.length > 0 && (
+            <button
+              type="button"
+              onClick={limpiarDatosDePrueba}
+              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+              title="Borrar datos de prueba para dejar el sistema limpio"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpiar datos de prueba</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setSeccionModal('manual');
+              setModalNuevoAbierto(true);
+            }}
+            className="px-4 py-2 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Producto</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Filtros y Búsqueda */}
@@ -332,8 +355,8 @@ export default function GestionProductosView() {
                     </span>
                   </div>
 
-                  {/* ACCIONES: EDITAR Y DESHABILITAR / HABILITAR */}
-                  <div className="col-span-2 flex items-center justify-end gap-2 mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-zinc-100">
+                  {/* ACCIONES: EDITAR, DESHABILITAR Y ELIMINAR */}
+                  <div className="col-span-2 flex items-center justify-end gap-1.5 mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-zinc-100">
                     {/* Botón Editar */}
                     <button
                       type="button"
@@ -367,6 +390,20 @@ export default function GestionProductosView() {
                         <span>Deshabilitar</span>
                       </button>
                     )}
+
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               );
@@ -444,6 +481,19 @@ export default function GestionProductosView() {
                       required
                       className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
                     />
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* Proveedor con ComboBox con búsqueda */}
@@ -459,7 +509,20 @@ export default function GestionProductosView() {
                       >
                         {mostrarCrearProv ? 'Cancelar nuevo proveedor' : '+ Crear nuevo proveedor'}
                       </button>
-                    </div>
+                      {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
                     {mostrarCrearProv ? (
                       <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2 mb-2">
@@ -479,7 +542,20 @@ export default function GestionProductosView() {
                             onChange={(e) => setTelefonoNuevoProv(e.target.value)}
                             className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900"
                           />
-                        </div>
+                          {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                         <button
                           type="button"
                           onClick={handleCrearProveedorRapido}
@@ -487,7 +563,20 @@ export default function GestionProductosView() {
                         >
                           Guardar Proveedor
                         </button>
-                      </div>
+                        {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                     ) : (
                       <SearchableSelect
                         options={opcionesProveedores}
@@ -497,6 +586,19 @@ export default function GestionProductosView() {
                         searchPlaceholder="Escribe para buscar proveedor..."
                       />
                     )}
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* Unidad con ComboBox con búsqueda */}
@@ -512,6 +614,19 @@ export default function GestionProductosView() {
                       searchPlaceholder="Buscar unidad (kg, lb, bolsa...)"
                       allowCustom={true}
                     />
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* Stock actual y Stock mínimo: CAMPOS DE TEXTO SOLO NÚMEROS SIN FLECHAS */}
@@ -526,7 +641,20 @@ export default function GestionProductosView() {
                         placeholder="0"
                         className="w-full"
                       />
-                    </div>
+                      {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
                     <div>
                       <label className="block text-xs font-bold text-zinc-700 mb-1.5">
@@ -538,7 +666,33 @@ export default function GestionProductosView() {
                         placeholder="2"
                         className="w-full"
                       />
-                    </div>
+                      {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* Botón de envío */}
@@ -555,6 +709,19 @@ export default function GestionProductosView() {
                       className="px-5 py-2.5 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
                     >
                       Guardar Producto
+                    </button>
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </form>
@@ -595,6 +762,19 @@ export default function GestionProductosView() {
                     >
                       <Upload className="w-4 h-4" />
                       <span>Importar Productos</span>
+                    </button>
+                    {/* Botón Eliminar Individual */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                          eliminarProducto(prod.id);
+                        }
+                      }}
+                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

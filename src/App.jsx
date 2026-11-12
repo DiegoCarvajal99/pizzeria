@@ -12,7 +12,8 @@ import {
   Boxes, 
   CheckCircle2, 
   AlertCircle, 
-  Info 
+  Info,
+  UtensilsCrossed
 } from 'lucide-react';
 
 function MainLayout() {
@@ -93,8 +94,8 @@ function MainLayout() {
               : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <ClipboardList className="w-4 h-4" />
-          <span className="mt-0.5">Stock</span>
+          <UtensilsCrossed className="w-4 h-4" />
+          <span className="mt-0.5">Consumo</span>
         </button>
 
         <button

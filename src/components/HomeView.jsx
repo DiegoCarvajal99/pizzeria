@@ -15,7 +15,8 @@ import {
   ArrowRight,
   Layers,
   MessageCircle,
-  HardDrive
+  HardDrive,
+  UtensilsCrossed
 } from 'lucide-react';
 
 export default function HomeView({ setActiveTab }) {
@@ -33,10 +34,10 @@ export default function HomeView({ setActiveTab }) {
     },
     {
       id: 'stock',
-      titulo: '2. Stock Actual & Kardex',
-      descripcion: 'Auditoría de existencias en tiempo real, umbrales de stock mínimo para evitar desabastecimientos y registro histórico de movimientos en cocina.',
-      icon: ClipboardList,
-      badge: 'Auditoría en vivo'
+      titulo: '2. Consumo Cocina & Bitácora',
+      descripcion: 'Digita y descuenta en tiempo real los insumos que tomas para la preparación, con alertas si excedes el stock y registro histórico con fecha y hora.',
+      icon: UtensilsCrossed,
+      badge: 'Toma para preparación'
     },
     {
       id: 'catalogo',

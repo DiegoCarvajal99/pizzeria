@@ -39,47 +39,94 @@ export default function RecepcionView() {
     });
   };
 
+  const formatearFechaDDMMYYYY = (fechaIso) => {
+    const d = fechaIso ? new Date(fechaIso) : new Date();
+    const dia = String(d.getDate()).padStart(2, '0');
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const anio = d.getFullYear();
+    return `${dia}/${mes}/${anio}`;
+  };
+
   /**
    * Construye el texto con estructura limpia y profesional para WhatsApp
    */
   const construirMensajePedido = (pedido) => {
-    const d = pedido.fechaCreacion ? new Date(pedido.fechaCreacion) : new Date();
-    const fechaStr = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+    const fechaStr = formatearFechaDDMMYYYY(pedido.fechaCreacion);
+    const idPedidoStr = pedido.numero ? `#${pedido.numero}` : `#${pedido.id}`;
 
-    let bloques = [];
-    bloques.push(`*PEDIDO SEMANAL* 🍕\n📅 ${fechaStr}`);
+    let totalProductos = 0;
+    const bloquesProveedores = [];
 
-    pedido.grupos.forEach(grupo => {
-      let lineasProveedor = [];
-      lineasProveedor.push(`*${grupo.proveedorNombre.toUpperCase()}*`);
+    (pedido.grupos || []).forEach(grupo => {
+      const lineasGrupo = [];
+      const nombreProv = (grupo.proveedorNombre || 'Sin Proveedor').trim().toUpperCase();
+      lineasGrupo.push(`🏪 ${nombreProv}`);
+
       grupo.items.forEach(item => {
-        const obsTexto = item.obs ? ` _(${item.obs})_` : "";
-        const unidadTexto = item.unidad ? ` ${item.unidad}` : "";
-        lineasProveedor.push(`• ${item.productoNombre}: *${item.cantidadPedida}${unidadTexto}*${obsTexto}`);
+        totalProductos += 1;
+        const unidadTexto = item.unidad ? ` ${item.unidad}` : '';
+        const obsTexto = item.obs ? ` (${item.obs})` : '';
+        lineasGrupo.push(`▫️ ${item.productoNombre} — ${item.cantidadPedida}${unidadTexto}${obsTexto}`);
       });
-      bloques.push(lineasProveedor.join("\n"));
+
+      bloquesProveedores.push(lineasGrupo.join('\n'));
     });
 
-    return bloques.join("\n\n");
+    const cuerpoProveedores = bloquesProveedores.join('\n\n');
+
+    const lineasMensaje = [
+      '🍕 PEDIDO SEMANAL 🍕',
+      '',
+      `🔢 Pedido N.º: ${idPedidoStr}`,
+      `📅 Fecha: ${fechaStr}`,
+      '',
+      '━━━━━━━━━━━━━━',
+      cuerpoProveedores,
+      '━━━━━━━━━━━━━━',
+      '',
+      `✅ Total de productos: ${totalProductos}`
+    ];
+
+    if (pedido.observaciones && pedido.observaciones.trim()) {
+      lineasMensaje.push('', `📝 Observaciones: ${pedido.observaciones.trim()}`);
+    }
+
+    return lineasMensaje.join('\n');
   };
 
   /**
    * Construye el texto para un solo proveedor
    */
-  const construirMensajeUnProveedor = (grupo, fechaIso) => {
-    const d = fechaIso ? new Date(fechaIso) : new Date();
-    const fechaStr = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  const construirMensajeUnProveedor = (grupo, fechaIso, numeroPedido) => {
+    const fechaStr = formatearFechaDDMMYYYY(fechaIso);
+    const idPedidoStr = numeroPedido ? `#${numeroPedido}` : '';
+    const nombreProv = (grupo.proveedorNombre || 'Proveedor').trim().toUpperCase();
 
-    let lineas = [];
-    lineas.push(`*PEDIDO - ${grupo.proveedorNombre.toUpperCase()}* 🍕`);
-    lineas.push(`📅 ${fechaStr}\n`);
-    grupo.items.forEach(item => {
-      const obsTexto = item.obs ? ` _(${item.obs})_` : "";
-      const unidadTexto = item.unidad ? ` ${item.unidad}` : "";
-      lineas.push(`• ${item.productoNombre}: *${item.cantidadPedida}${unidadTexto}*${obsTexto}`);
+    const lineasItems = [];
+    (grupo.items || []).forEach(item => {
+      const unidadTexto = item.unidad ? ` ${item.unidad}` : '';
+      const obsTexto = item.obs ? ` (${item.obs})` : '';
+      lineasItems.push(`▫️ ${item.productoNombre} — ${item.cantidadPedida}${unidadTexto}${obsTexto}`);
     });
 
-    return lineas.join("\n");
+    const lineasMensaje = [
+      '🍕 PEDIDO SEMANAL 🍕',
+      ''
+    ];
+
+    if (idPedidoStr) {
+      lineasMensaje.push(`🔢 Pedido N.º: ${idPedidoStr}`);
+    }
+    lineasMensaje.push(`📅 Fecha: ${fechaStr}`);
+    lineasMensaje.push('');
+    lineasMensaje.push('━━━━━━━━━━━━━━');
+    lineasMensaje.push(`🏪 ${nombreProv}`);
+    lineasMensaje.push(lineasItems.join('\n'));
+    lineasMensaje.push('━━━━━━━━━━━━━━');
+    lineasMensaje.push('');
+    lineasMensaje.push(`✅ Total de productos: ${grupo.items ? grupo.items.length : 0}`);
+
+    return lineasMensaje.join('\n');
   };
 
   // 1. Copiar al portapapeles

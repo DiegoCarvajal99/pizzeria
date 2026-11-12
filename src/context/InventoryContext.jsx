@@ -25,18 +25,25 @@ export function InventoryProvider({ children }) {
   const [productos, setProductos] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTOS);
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTOS;
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      // Descartar automáticamente datos de prueba iniciales
+      const sonDePrueba = Array.isArray(parsed) && parsed.some(p => p.id === 'prod-1' || p.id === 'prod-2');
+      return sonDePrueba ? [] : parsed;
     } catch {
-      return INITIAL_PRODUCTOS;
+      return [];
     }
   });
 
   const [proveedores, setProveedores] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.PROVEEDORES);
-      return saved ? JSON.parse(saved) : INITIAL_PROVEEDORES;
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      const sonDePrueba = Array.isArray(parsed) && parsed.some(p => p.id === 'prov-distripapa' || p.id === 'prov-mercado');
+      return sonDePrueba ? [] : parsed;
     } catch {
-      return INITIAL_PROVEEDORES;
+      return [];
     }
   });
 
@@ -122,19 +129,15 @@ export function InventoryProvider({ children }) {
 
     // Escuchar productos
     const unsubProductos = onSnapshot(collection(db, 'productos'), (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setProductos(list);
-      }
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setProductos(list);
     }, (err) => console.warn('Error escuchando productos en Firestore:', err));
     unsubs.push(unsubProductos);
 
     // Escuchar proveedores
     const unsubProveedores = onSnapshot(collection(db, 'proveedores'), (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setProveedores(list);
-      }
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setProveedores(list);
     }, (err) => console.warn('Error escuchando proveedores en Firestore:', err));
     unsubs.push(unsubProveedores);
 
@@ -198,6 +201,42 @@ export function InventoryProvider({ children }) {
         console.error(e);
       }
     }
+  };
+
+  const registrarConsumo = async (productoId, cantidadTomada, notas = 'Toma para preparación') => {
+    const prod = productos.find(p => p.id === productoId);
+    if (!prod) return { success: false, error: 'Producto no encontrado' };
+
+    const stockPrev = Number(prod.stock) || 0;
+    const cant = Math.max(0, Math.round((Number(cantidadTomada) || 0) * 100) / 100);
+    const nuevoStock = Math.max(0, Math.round((stockPrev - cant) * 100) / 100);
+
+    const mov = {
+      id: 'mov_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      fecha: new Date().toISOString(),
+      tipo: 'consumo_cocina',
+      prodId: prod.id,
+      prodNombre: prod.nombre,
+      unidad: prod.unidad,
+      delta: -cant,
+      stockPrevio: stockPrev,
+      stockNuevo: nuevoStock,
+      referencia: notas || 'Toma para preparación'
+    };
+
+    setMovimientos(prev => [mov, ...prev.slice(0, 199)]);
+    setProductos(prev => prev.map(p => p.id === productoId ? { ...p, stock: nuevoStock } : p));
+
+    if (isFirebaseConfigured && db) {
+      try {
+        await updateDoc(doc(db, 'productos', productoId), { stock: nuevoStock });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    mostrarAlerta(`✅ Se descontaron ${cant} ${prod.unidad} de ${prod.nombre} (Quedan: ${nuevoStock})`, 'success');
+    return { success: true, nuevoStock, mov };
   };
 
   const modificarStockDelta = async (id, delta) => {
@@ -450,6 +489,41 @@ export function InventoryProvider({ children }) {
     mostrarAlerta('Pedido cancelado', 'info');
   };
 
+  const limpiarDatosDePrueba = async () => {
+    const confirmar = window.confirm(
+      '¿Deseas vaciar todos los datos de prueba? Esto dejará el sistema 100% limpio en blanco para ingresar tus datos reales.'
+    );
+    if (!confirmar) return;
+
+    setProductos([]);
+    setProveedores([]);
+    setPedidos([]);
+    setMovimientos([]);
+
+    localStorage.removeItem(STORAGE_KEYS.PRODUCTOS);
+    localStorage.removeItem(STORAGE_KEYS.PROVEEDORES);
+    localStorage.removeItem(STORAGE_KEYS.PEDIDOS);
+    localStorage.removeItem(STORAGE_KEYS.MOVIMIENTOS);
+
+    if (isFirebaseConfigured && db) {
+      try {
+        const colecciones = ['productos', 'proveedores', 'pedidos', 'movimientos'];
+        for (const col of colecciones) {
+          const snap = await getDocs(collection(db, col));
+          if (!snap.empty) {
+            const batch = writeBatch(db);
+            snap.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+        }
+      } catch (err) {
+        console.warn('Error vaciando Firestore:', err);
+      }
+    }
+
+    mostrarAlerta('🧹 ¡Datos de prueba eliminados! Tu pizzería está lista para datos reales.', 'success');
+  };
+
   return (
     <InventoryContext.Provider value={{
       productos,
@@ -460,6 +534,7 @@ export function InventoryProvider({ children }) {
       mostrarAlerta,
       agregarProducto,
       actualizarStock,
+      registrarConsumo,
       modificarStockDelta,
       eliminarProducto,
       toggleHabilitarProducto,
@@ -467,7 +542,8 @@ export function InventoryProvider({ children }) {
       crearPedido,
       confirmarRecepcionItems,
       confirmarItemIndividual,
-      cancelarPedido
+      cancelarPedido,
+      limpiarDatosDePrueba
     }}>
       {children}
     </InventoryContext.Provider>
