@@ -39,7 +39,7 @@ export default function NumericInput({
       onChange={handleChange}
       placeholder={placeholder}
       disabled={disabled}
-      className={`px-3 py-2 bg-[#0F1512] border border-[#2A352F] rounded-xl text-sm font-mono text-white placeholder-stone-600 focus:outline-emerald-500 focus:border-emerald-500 transition-colors ${className}`}
+      className={`px-3 py-2 bg-white border border-zinc-300 rounded-xl text-sm font-mono text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors ${className}`}
       {...props}
     />
   );
