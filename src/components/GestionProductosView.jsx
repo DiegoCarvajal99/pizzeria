@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { UNIDADES_DISPONIBLES } from '../data/initialData';
 import SearchableSelect from './common/SearchableSelect';
@@ -10,69 +10,117 @@ import {
   CheckCircle, 
   FileSpreadsheet, 
   Upload, 
+  Download,
   Search, 
   X, 
   Boxes, 
   Store,
-  Trash2
+  Trash2,
+  Check,
+  AlertCircle,
+  FileText,
+  Phone,
+  MessageCircle,
+  UserPlus
 } from 'lucide-react';
 
 export default function GestionProductosView() {
   const { 
-    productos, 
-    proveedores, 
+    productos = [], 
+    proveedores = [], 
     agregarProducto, 
     eliminarProducto,
     toggleHabilitarProducto, 
     agregarProveedor,
-    limpiarDatosDePrueba 
+    actualizarProveedor,
+    eliminarProveedor,
+    limpiarDatosDePrueba,
+    mostrarAlerta 
   } = useInventory();
 
-  // Estados de control de modales
+  // Sub-pestaña activa: 'productos' (catálogo de insumos) o 'proveedores' (directorio de proveedores)
+  const [pestanaActiva, setPestanaActiva] = useState('productos');
+
+  // =========================================================================
+  // ESTADOS PARA PRODUCTOS
+  // =========================================================================
   const [modalNuevoAbierto, setModalNuevoAbierto] = useState(false);
   const [seccionModal, setSeccionModal] = useState('manual'); // 'manual' | 'importar'
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
 
-  // Filtros de la lista principal
+  // Filtros de la lista de productos
   const [busqueda, setBusqueda] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('todos');
   const [filtroEstado, setFiltroEstado] = useState('todos'); // 'todos' | 'activos' | 'deshabilitados'
 
-  // Estados del formulario "Registrar Nuevo Producto"
+  // Formulario registrar nuevo producto
   const [nombre, setNombre] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [unidad, setUnidad] = useState('kg');
   const [stockInicial, setStockInicial] = useState('0');
   const [stockMinimo, setStockMinimo] = useState('2');
 
-  // Estados de crear proveedor dentro del formulario
+  // Formulario rápido crear proveedor dentro del modal de producto
   const [mostrarCrearProv, setMostrarCrearProv] = useState(false);
   const [nombreNuevoProv, setNombreNuevoProv] = useState('');
   const [telefonoNuevoProv, setTelefonoNuevoProv] = useState('');
 
-  // Estados del formulario "Importar Lista Masiva"
+  // Estados de la sección "Importar desde Excel"
   const [textoImportar, setTextoImportar] = useState('');
+  const [importando, setImportando] = useState(false);
   const [mensajeImportacion, setMensajeImportacion] = useState(null);
+  const fileInputRef = useRef(null);
 
-  // Filtrado de la lista principal
-  const productosFiltrados = productos.filter(p => {
-    const coincideTexto = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          (p.proveedorNombre && p.proveedorNombre.toLowerCase().includes(busqueda.toLowerCase()));
-    const coincideProveedor = filtroProveedor === 'todos' || p.proveedorId === filtroProveedor || p.proveedorNombre === filtroProveedor;
-    const coincideEstado = filtroEstado === 'todos' 
-      ? true 
-      : filtroEstado === 'activos' 
-      ? !p.deshabilitado 
-      : p.deshabilitado;
+  // =========================================================================
+  // ESTADOS PARA PROVEEDORES
+  // =========================================================================
+  const [modalProveedorAbierto, setModalProveedorAbierto] = useState(false);
+  const [proveedorEnEdicion, setProveedorEnEdicion] = useState(null);
+  const [busquedaProveedores, setBusquedaProveedores] = useState('');
 
-    return coincideTexto && coincideProveedor && coincideEstado;
-  });
+  // Formulario Proveedor (crear / editar)
+  const [formProvNombre, setFormProvNombre] = useState('');
+  const [formProvTelefono, setFormProvTelefono] = useState('');
+  const [formProvNotas, setFormProvNotas] = useState('');
 
-  // Manejar creación individual de producto
+  // =========================================================================
+  // FILTRADOS
+  // =========================================================================
+  const productosFiltrados = useMemo(() => {
+    return productos.filter(p => {
+      const coincideTexto = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+                            (p.proveedorNombre && p.proveedorNombre.toLowerCase().includes(busqueda.toLowerCase()));
+      const coincideProveedor = filtroProveedor === 'todos' || p.proveedorId === filtroProveedor || p.proveedorNombre === filtroProveedor;
+      const coincideEstado = filtroEstado === 'todos' 
+        ? true 
+        : filtroEstado === 'activos' 
+        ? !p.deshabilitado 
+        : p.deshabilitado;
+
+      return coincideTexto && coincideProveedor && coincideEstado;
+    });
+  }, [productos, busqueda, filtroProveedor, filtroEstado]);
+
+  const proveedoresFiltrados = useMemo(() => {
+    return proveedores.filter(p => {
+      const q = busquedaProveedores.toLowerCase();
+      return (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+             (p.telefono && p.telefono.toLowerCase().includes(q)) ||
+             (p.notas && p.notas.toLowerCase().includes(q));
+    });
+  }, [proveedores, busquedaProveedores]);
+
+  // =========================================================================
+  // ACCIONES DE PRODUCTOS
+  // =========================================================================
   const handleSubmitNuevoProducto = async (e) => {
     e.preventDefault();
     if (!nombre.trim() || !proveedorId) {
-      alert('Por favor ingresa el nombre del producto y selecciona un proveedor.');
+      if (mostrarAlerta) {
+        mostrarAlerta('Ingresa el nombre del producto y selecciona un proveedor.', 'warning');
+      } else {
+        alert('Ingresa el nombre del producto y selecciona un proveedor.');
+      }
       return;
     }
 
@@ -88,14 +136,12 @@ export default function GestionProductosView() {
       deshabilitado: false
     });
 
-    // Resetear formulario
     setNombre('');
     setStockInicial('0');
     setStockMinimo('2');
     setModalNuevoAbierto(false);
   };
 
-  // Manejar guardado de edición
   const handleGuardarEdicion = async (e) => {
     e.preventDefault();
     if (!productoEnEdicion || !productoEnEdicion.nombre.trim()) return;
@@ -113,7 +159,6 @@ export default function GestionProductosView() {
     setProductoEnEdicion(null);
   };
 
-  // Manejar creación rápida de proveedor
   const handleCrearProveedorRapido = async (e) => {
     e.preventDefault();
     if (!nombreNuevoProv.trim()) return;
@@ -130,345 +175,674 @@ export default function GestionProductosView() {
     setMostrarCrearProv(false);
   };
 
-  // Importar desde Excel
-  const handleImportarExcel = async () => {
-    if (!textoImportar.trim()) return;
+  // =========================================================================
+  // ACCIONES DE PROVEEDORES (CREAR, EDITAR, ELIMINAR)
+  // =========================================================================
+  const handleAbrirCrearProveedor = () => {
+    setProveedorEnEdicion(null);
+    setFormProvNombre('');
+    setFormProvTelefono('');
+    setFormProvNotas('');
+    setModalProveedorAbierto(true);
+  };
 
-    const lineas = textoImportar.split(/\r?\n/);
-    let agregados = 0;
-    let omitidos = 0;
+  const handleAbrirEditarProveedor = (prov) => {
+    setProveedorEnEdicion(prov);
+    setFormProvNombre(prov.nombre || '');
+    setFormProvTelefono(prov.telefono || '');
+    setFormProvNotas(prov.notas || '');
+    setModalProveedorAbierto(true);
+  };
 
-    for (const raw of lineas) {
-      const linea = raw.trim();
-      if (!linea) continue;
+  const handleSubmitProveedor = async (e) => {
+    e.preventDefault();
+    if (!formProvNombre.trim()) {
+      if (mostrarAlerta) mostrarAlerta('Ingresa el nombre del proveedor', 'warning');
+      return;
+    }
+
+    if (proveedorEnEdicion) {
+      if (actualizarProveedor) {
+        await actualizarProveedor(proveedorEnEdicion.id, {
+          ...proveedorEnEdicion,
+          nombre: formProvNombre.trim(),
+          telefono: formProvTelefono.trim(),
+          notas: formProvNotas.trim()
+        });
+      }
+    } else {
+      await agregarProveedor({
+        nombre: formProvNombre.trim(),
+        telefono: formProvTelefono.trim(),
+        notas: formProvNotas.trim()
+      });
+    }
+
+    setModalProveedorAbierto(false);
+  };
+
+  const handleEliminarProveedorClick = async (prov) => {
+    const productosVinculados = productos.filter(p => p.proveedorId === prov.id);
+    const mensaje = productosVinculados.length > 0
+      ? `Este proveedor tiene ${productosVinculados.length} producto(s) asignado(s). ¿Estás seguro de que deseas eliminar a "${prov.nombre}"?`
+      : `¿Eliminar a "${prov.nombre}" del directorio de proveedores?`;
+
+    if (window.confirm(mensaje)) {
+      if (eliminarProveedor) {
+        await eliminarProveedor(prov.id);
+      }
+    }
+  };
+
+  // =========================================================================
+  // IMPORTACIÓN DE EXCEL / CSV
+  // =========================================================================
+  const handleDescargarPlantillaExcel = () => {
+    const encabezados = "Proveedor,Producto,Unidad,Stock_Actual,Stock_Minimo\r\n";
+    const ejemplos = [
+      "ARA,Queso mozzarella,bloque,10,4",
+      "DISTRIPAPA,Papa criolla,kg,15,5",
+      "MERCADO,Tomate chonto,kg,20,5",
+      "D1,Servilletas,paquete,8,3",
+      "PAULA,Pepperoni,kg,6,2",
+      "SUB,Cajas de pizza 35cm,paquete,25,10"
+    ].join("\r\n");
+
+    const contenido = "\uFEFF" + encabezados + ejemplos;
+    const blob = new Blob([contenido], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "plantilla_productos_pizzeria.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const parsearFilasImportacion = (texto) => {
+    if (!texto || !texto.trim()) return [];
+    const lineas = texto.trim().split(/\r?\n/);
+    const resultados = [];
+
+    for (let i = 0; i < lineas.length; i++) {
+      const raw = lineas[i].trim();
+      if (!raw) continue;
 
       let partes = [];
-      if (/\t|;|\|/.test(linea)) {
-        partes = linea.split(/\t|;|\|/);
+      if (raw.includes('\t')) {
+        partes = raw.split('\t');
+      } else if (raw.includes(';')) {
+        partes = raw.split(';');
+      } else if (raw.includes('|')) {
+        partes = raw.split('|');
       } else {
-        partes = linea.split(',');
+        partes = raw.split(',');
       }
 
-      partes = partes.map(p => p.trim());
-      const [lugar, prodNombre, uni, stockRaw] = partes;
+      partes = partes.map(p => p.trim().replace(/^["']|["']$/g, ''));
+      if (partes.length < 2) continue;
 
-      if (lugar?.toLowerCase() === 'lugar' || lugar?.toLowerCase() === 'proveedor') continue;
+      const [col1, col2, col3, col4, col5] = partes;
 
-      if (!lugar || !prodNombre) {
-        omitidos++;
+      const c1 = (col1 || '').toLowerCase();
+      const c2 = (col2 || '').toLowerCase();
+      if (
+        c1.includes('proveedor') || c1.includes('lugar') ||
+        c2.includes('producto') || c2.includes('nombre') || c2.includes('insumo')
+      ) {
         continue;
       }
 
-      let prov = proveedores.find(p => p.nombre.toLowerCase() === lugar.toLowerCase());
-      if (!prov) {
-        prov = await agregarProveedor({ nombre: lugar, telefono: '', notas: '' });
-      }
+      if (!col1 || !col2) continue;
 
-      await agregarProducto({
-        nombre: prodNombre,
-        proveedorId: prov.id,
-        proveedorNombre: prov.nombre,
-        unidad: uni || 'unidad',
-        stock: parseFloat(stockRaw) || 0,
-        stockMinimo: 2,
-        deshabilitado: false
+      resultados.push({
+        proveedor: col1,
+        producto: col2,
+        unidad: col3 || 'unidad',
+        stock: parseFloat(col4) || 0,
+        stockMinimo: parseFloat(col5) || 2
       });
-
-      agregados++;
     }
 
-    setMensajeImportacion(`✅ Se importaron ${agregados} productos con éxito.${omitidos > 0 ? ` (${omitidos} filas omitidas)` : ''}`);
-    setTextoImportar('');
-    setTimeout(() => {
-      setModalNuevoAbierto(false);
-      setMensajeImportacion(null);
-    }, 1800);
+    return resultados;
   };
 
-  // Opciones formateadas para los comboboxes con búsqueda
-  const opcionesProveedores = proveedores.map(p => ({
+  const filasPrevisualizadas = useMemo(() => {
+    return parsearFilasImportacion(textoImportar);
+  }, [textoImportar]);
+
+  const handleArchivoCargado = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const contenido = event.target?.result;
+      if (typeof contenido === 'string') {
+        setTextoImportar(contenido);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleEjecutarImportacion = async () => {
+    if (filasPrevisualizadas.length === 0) return;
+    setImportando(true);
+
+    try {
+      let agregados = 0;
+
+      for (const fila of filasPrevisualizadas) {
+        let prov = proveedores.find(p => p.nombre.toLowerCase() === fila.proveedor.toLowerCase());
+        if (!prov) {
+          prov = await agregarProveedor({ 
+            nombre: fila.proveedor.trim(), 
+            telefono: '', 
+            notas: 'Creado automáticamente por importación masiva' 
+          });
+        }
+
+        await agregarProducto({
+          nombre: fila.producto.trim(),
+          proveedorId: prov.id,
+          proveedorNombre: prov.nombre,
+          unidad: fila.unidad.trim() || 'unidad',
+          stock: fila.stock,
+          stockMinimo: fila.stockMinimo,
+          deshabilitado: false
+        });
+
+        agregados++;
+      }
+
+      setMensajeImportacion(`✅ ¡Éxito! Se importaron ${agregados} productos y sus proveedores al catálogo.`);
+      setTextoImportar('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      setTimeout(() => {
+        setModalNuevoAbierto(false);
+        setMensajeImportacion(null);
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      alert('Ocurrió un error importando algunos productos. Por favor verifica los datos.');
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const opcionesProveedores = useMemo(() => proveedores.map(p => ({
     value: p.id,
     label: p.nombre,
     subtext: p.telefono
-  }));
+  })), [proveedores]);
 
-  const opcionesUnidades = UNIDADES_DISPONIBLES.map(u => ({
+  const opcionesUnidades = useMemo(() => UNIDADES_DISPONIBLES.map(u => ({
     value: u,
     label: u
-  }));
+  })), []);
 
   return (
     <div className="space-y-6 pb-20">
-      {/* 1. Cabecera principal con Botón "Nuevo Producto" */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-zinc-900 font-display flex items-center gap-2">
-            <Boxes className="w-5 h-5 text-black" />
-            <span>Catálogo de Productos ({productos.length})</span>
-          </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Administra tus insumos, asigna proveedores y controla el estado activo/deshabilitado.
-          </p>
-        </div>
-
-        {/* BOTONES DE ACCIÓN: Nuevo Producto & Limpiar Datos de Prueba */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {productos.length > 0 && (
-            <button
-              type="button"
-              onClick={limpiarDatosDePrueba}
-              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-              title="Borrar datos de prueba para dejar el sistema limpio"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Limpiar datos de prueba</span>
-            </button>
-          )}
+      {/* 1. Selector de Pestaña Principal: [Insumos & Productos] vs [Proveedores] */}
+      <div className="bg-white p-2 rounded-2xl border border-zinc-200 shadow-sm flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('productos')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              pestanaActiva === 'productos'
+                ? 'bg-black text-white shadow-xs'
+                : 'text-zinc-600 hover:text-black hover:bg-zinc-100'
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            <span>Insumos & Productos ({productos.length})</span>
+          </button>
 
           <button
             type="button"
-            onClick={() => {
-              setSeccionModal('manual');
-              setModalNuevoAbierto(true);
-            }}
-            className="px-4 py-2 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            onClick={() => setPestanaActiva('proveedores')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              pestanaActiva === 'proveedores'
+                ? 'bg-black text-white shadow-xs'
+                : 'text-zinc-600 hover:text-black hover:bg-zinc-100'
+            }`}
           >
-            <Plus className="w-4 h-4" />
-            <span>Nuevo Producto</span>
+            <Store className="w-4 h-4" />
+            <span>Proveedores ({proveedores.length})</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Filtros y Búsqueda */}
-      <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div className="sm:col-span-1 relative">
-            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
-            <input
-              type="text"
-              placeholder="Buscar producto por nombre..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
-            />
+      {/* =========================================================================
+          VISTA A: GESTIÓN DE INSUMOS & PRODUCTOS
+          ========================================================================= */}
+      {pestanaActiva === 'productos' && (
+        <div className="space-y-6">
+          {/* Cabecera de Productos */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 font-display flex items-center gap-2">
+                <Boxes className="w-5 h-5 text-black" />
+                <span>Catálogo de Insumos ({productos.length})</span>
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Administra tus insumos, asigna proveedores y controla el estado activo/deshabilitado.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {productos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={limpiarDatosDePrueba}
+                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="Borrar datos de prueba para dejar el sistema limpio"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Limpiar datos de prueba</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSeccionModal('manual');
+                  setModalNuevoAbierto(true);
+                }}
+                className="px-4 py-2 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nuevo Producto</span>
+              </button>
+            </div>
           </div>
 
-          <div>
-            {/* ComboBox con búsqueda de proveedor */}
-            <SearchableSelect
-              options={[{ value: 'todos', label: 'Todos los proveedores' }, ...opcionesProveedores]}
-              value={filtroProveedor}
-              onChange={setFiltroProveedor}
-              placeholder="Filtrar por proveedor"
-              searchPlaceholder="Buscar proveedor..."
-            />
-          </div>
+          {/* Filtros y Búsqueda de Productos */}
+          <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="sm:col-span-1 relative">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  placeholder="Buscar producto por nombre..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                />
+              </div>
 
-          <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl border border-zinc-200 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setFiltroEstado('todos')}
-              className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                filtroEstado === 'todos' ? 'bg-white text-black font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroEstado('activos')}
-              className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                filtroEstado === 'activos' ? 'bg-white text-black font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
-              }`}
-            >
-              Activos
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroEstado('deshabilitados')}
-              className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                filtroEstado === 'deshabilitados' ? 'bg-black text-white font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
-              }`}
-            >
-              Deshabilitados
-            </button>
-          </div>
-        </div>
-      </div>
+              <div>
+                <SearchableSelect
+                  options={[{ value: 'todos', label: 'Todos los proveedores' }, ...opcionesProveedores]}
+                  value={filtroProveedor}
+                  onChange={setFiltroProveedor}
+                  placeholder="Filtrar por proveedor"
+                  searchPlaceholder="Buscar proveedor..."
+                />
+              </div>
 
-      {/* 3. LISTA DE PRODUCTOS */}
-      <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
-        {/* Cabecera de la tabla */}
-        <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 hidden sm:grid sm:grid-cols-12 text-xs font-bold uppercase tracking-wider text-zinc-500">
-          <div className="col-span-5">Producto</div>
-          <div className="col-span-3">Proveedor</div>
-          <div className="col-span-2">Unidad / Stock</div>
-          <div className="col-span-2 text-right">Acciones</div>
-        </div>
-
-        {productosFiltrados.length === 0 ? (
-          <div className="p-10 text-center text-zinc-400">
-            <Boxes className="w-10 h-10 mx-auto mb-2 text-zinc-300" />
-            <p className="text-sm font-semibold text-zinc-700">No se encontraron productos</p>
-            <p className="text-xs mt-1 text-zinc-500">Prueba cambiando los filtros o agrega un producto con el botón "Nuevo Producto".</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-100">
-            {productosFiltrados.map((prod) => {
-              const estaDeshabilitado = Boolean(prod.deshabilitado);
-
-              return (
-                <div
-                  key={prod.id}
-                  className={`p-4 sm:grid sm:grid-cols-12 sm:items-center gap-3 transition-colors ${
-                    estaDeshabilitado ? 'bg-zinc-50/50 opacity-60' : 'hover:bg-zinc-50/70'
+              <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl border border-zinc-200 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setFiltroEstado('todos')}
+                  className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    filtroEstado === 'todos' ? 'bg-white text-black font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
                   }`}
                 >
-                  {/* Nombre del producto + Badge de estado */}
-                  <div className="col-span-5 flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${estaDeshabilitado ? 'bg-zinc-400' : 'bg-emerald-500'}`} />
-                    <div className="min-w-0">
-                      <p className={`font-bold text-sm truncate ${estaDeshabilitado ? 'line-through text-zinc-400' : 'text-zinc-900'}`}>
-                        {prod.nombre}
-                      </p>
-                      {estaDeshabilitado && (
-                        <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 mt-0.5">
-                          Deshabilitado
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Proveedor */}
-                  <div className="col-span-3 text-xs text-zinc-600 flex items-center gap-1.5 mt-1 sm:mt-0">
-                    <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                    <span className="truncate">{prod.proveedorNombre || 'Sin proveedor'}</span>
-                  </div>
-
-                  {/* Unidad y Stock actual */}
-                  <div className="col-span-2 text-xs text-zinc-600 mt-1 sm:mt-0">
-                    <span className="font-semibold text-zinc-900 px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200">
-                      {prod.unidad}
-                    </span>
-                    <span className="ml-2 text-zinc-500 font-mono">
-                      (Stock: {prod.stock ?? 0})
-                    </span>
-                  </div>
-
-                  {/* ACCIONES: EDITAR, DESHABILITAR Y ELIMINAR */}
-                  <div className="col-span-2 flex items-center justify-end gap-1.5 mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-zinc-100">
-                    {/* Botón Editar */}
-                    <button
-                      type="button"
-                      onClick={() => setProductoEnEdicion({ ...prod })}
-                      className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                      title="Editar producto"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-zinc-600" />
-                      <span>Editar</span>
-                    </button>
-
-                    {/* Botón Deshabilitar / Habilitar */}
-                    {estaDeshabilitado ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleHabilitarProducto(prod.id)}
-                        className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                        title="Habilitar este producto para que vuelva a estar disponible"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 text-black" />
-                        <span>Habilitar</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => toggleHabilitarProducto(prod.id)}
-                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                        title="Deshabilitar este producto para pausarlo temporalmente"
-                      >
-                        <Ban className="w-3.5 h-3.5 text-rose-500" />
-                        <span>Deshabilitar</span>
-                      </button>
-                    )}
-
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroEstado('activos')}
+                  className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    filtroEstado === 'activos' ? 'bg-white text-black font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
+                  }`}
+                >
+                  Activos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroEstado('deshabilitados')}
+                  className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    filtroEstado === 'deshabilitados' ? 'bg-black text-white font-bold shadow-xs' : 'text-zinc-600 hover:text-black'
+                  }`}
+                >
+                  Deshabilitados
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Tabla de Productos */}
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 hidden sm:grid sm:grid-cols-12 text-xs font-bold uppercase tracking-wider text-zinc-500">
+              <div className="col-span-5">Producto</div>
+              <div className="col-span-3">Proveedor</div>
+              <div className="col-span-2">Unidad / Stock</div>
+              <div className="col-span-2 text-right">Acciones</div>
+            </div>
+
+            {productosFiltrados.length === 0 ? (
+              <div className="p-12 text-center text-zinc-400 space-y-2">
+                <Boxes className="w-12 h-12 mx-auto mb-2 text-zinc-300" />
+                <p className="text-base font-bold text-zinc-800">No hay productos registrados</p>
+                <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                  Comienza a registrar los ingredientes de tu pizzería usando el botón "+ Nuevo Producto" o importa tu listado de Excel.
+                </p>
+                <div className="pt-2 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setSeccionModal('manual'); setModalNuevoAbierto(true); }}
+                    className="px-4 py-2 bg-black text-white text-xs font-bold rounded-xl shadow-sm hover:bg-zinc-800 cursor-pointer"
+                  >
+                    + Registrar Producto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSeccionModal('importar'); setModalNuevoAbierto(true); }}
+                    className="px-4 py-2 bg-zinc-100 text-zinc-800 text-xs font-bold rounded-xl hover:bg-zinc-200 cursor-pointer"
+                  >
+                    Importar Excel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {productosFiltrados.map((prod) => {
+                  const estaDeshabilitado = Boolean(prod.deshabilitado);
+
+                  return (
+                    <div
+                      key={prod.id}
+                      className={`p-4 sm:grid sm:grid-cols-12 sm:items-center gap-3 transition-colors ${
+                        estaDeshabilitado ? 'bg-zinc-50/50 opacity-60' : 'hover:bg-zinc-50/70'
+                      }`}
+                    >
+                      <div className="col-span-5 flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${estaDeshabilitado ? 'bg-zinc-400' : 'bg-emerald-500'}`} />
+                        <div className="min-w-0">
+                          <p className={`font-bold text-sm truncate ${estaDeshabilitado ? 'line-through text-zinc-400' : 'text-zinc-900'}`}>
+                            {prod.nombre}
+                          </p>
+                          {estaDeshabilitado && (
+                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 mt-0.5">
+                              Deshabilitado
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="col-span-3 text-xs text-zinc-600 flex items-center gap-1.5 mt-1 sm:mt-0">
+                        <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <span className="truncate">{prod.proveedorNombre || 'Sin proveedor'}</span>
+                      </div>
+
+                      <div className="col-span-2 text-xs text-zinc-600 mt-1 sm:mt-0">
+                        <span className="font-semibold text-zinc-900 px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200">
+                          {prod.unidad}
+                        </span>
+                        <span className="ml-2 text-zinc-500 font-mono">
+                          (Stock: {prod.stock ?? 0})
+                        </span>
+                      </div>
+
+                      <div className="col-span-2 flex items-center justify-end gap-1.5 mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-zinc-100">
+                        <button
+                          type="button"
+                          onClick={() => setProductoEnEdicion({ ...prod })}
+                          className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          title="Editar producto"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-zinc-600" />
+                          <span>Editar</span>
+                        </button>
+
+                        {estaDeshabilitado ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleHabilitarProducto(prod.id)}
+                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Habilitar este producto para que vuelva a estar disponible"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5 text-black" />
+                            <span>Habilitar</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleHabilitarProducto(prod.id)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Deshabilitar este producto para pausarlo temporalmente"
+                          >
+                            <Ban className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Deshabilitar</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
+                              eliminarProducto(prod.id);
+                            }
+                          }}
+                          className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
+                          title="Eliminar producto permanentemente"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          VISTA B: GESTIÓN DE PROVEEDORES (NUEVA SECCIÓN REQUERIDA)
+          ========================================================================= */}
+      {pestanaActiva === 'proveedores' && (
+        <div className="space-y-6">
+          {/* Cabecera de Proveedores */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 font-display flex items-center gap-2">
+                <Store className="w-5 h-5 text-black" />
+                <span>Directorio de Proveedores ({proveedores.length})</span>
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Edita nombres, teléfonos de contacto para WhatsApp y notas de entrega de cada proveedor.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAbrirCrearProveedor}
+              className="px-4 py-2 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Nuevo Proveedor</span>
+            </button>
+          </div>
+
+          {/* Búsqueda de Proveedores */}
+          <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm">
+            <div className="relative">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Buscar proveedor por nombre, teléfono o notas..."
+                value={busquedaProveedores}
+                onChange={(e) => setBusquedaProveedores(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
+              />
+            </div>
+          </div>
+
+          {/* Listado de Proveedores en Tarjetas Claras */}
+          {proveedoresFiltrados.length === 0 ? (
+            <div className="p-12 text-center text-zinc-400 bg-white rounded-2xl border border-zinc-200 shadow-sm space-y-2">
+              <Store className="w-12 h-12 mx-auto mb-2 text-zinc-300" />
+              <p className="text-base font-bold text-zinc-800">No hay proveedores registrados</p>
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                Crea tu primer proveedor para asociarlo a tus ingredientes y pedidos.
+              </p>
+              <button
+                type="button"
+                onClick={handleAbrirCrearProveedor}
+                className="mt-2 px-4 py-2 bg-black text-white text-xs font-bold rounded-xl shadow-sm hover:bg-zinc-800 cursor-pointer"
+              >
+                + Registrar Proveedor
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {proveedoresFiltrados.map((prov) => {
+                const totalInsumos = productos.filter(p => p.proveedorId === prov.id).length;
+                const tieneTelefono = Boolean(prov.telefono && prov.telefono.trim());
+
+                return (
+                  <div 
+                    key={prov.id}
+                    className="p-5 bg-white rounded-2xl border border-zinc-200 shadow-sm hover:border-zinc-300 transition-all flex flex-col justify-between gap-4"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-black text-white rounded-xl">
+                            <Store className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-base text-zinc-900 font-display">
+                              {prov.nombre}
+                            </h3>
+                            <span className="text-[11px] font-semibold text-zinc-500">
+                              {totalInsumos} {totalInsumos === 1 ? 'producto vinculado' : 'productos vinculados'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAbrirEditarProveedor(prov)}
+                            className="p-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-semibold cursor-pointer"
+                            title="Editar proveedor"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarProveedorClick(prov)}
+                            className="p-1.5 bg-zinc-100 hover:bg-rose-50 text-zinc-400 hover:text-rose-600 rounded-lg text-xs font-semibold cursor-pointer"
+                            title="Eliminar proveedor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-3.5 space-y-2 text-xs">
+                        <div className="flex items-center gap-2 text-zinc-700">
+                          <Phone className="w-3.5 h-3.5 text-zinc-400" />
+                          {tieneTelefono ? (
+                            <span className="font-mono font-semibold">{prov.telefono}</span>
+                          ) : (
+                            <span className="text-zinc-400 italic">Sin teléfono registrado</span>
+                          )}
+                        </div>
+
+                        {prov.notas && (
+                          <div className="p-2.5 bg-zinc-50 rounded-xl border border-zinc-200 text-zinc-600 text-[11px]">
+                            {prov.notas}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {tieneTelefono && (
+                      <div className="pt-2 border-t border-zinc-100">
+                        <a
+                          href={`https://wa.me/${prov.telefono.replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Enviar WhatsApp</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ========================================================================= */}
-      {/* 4. MODAL: "Nuevo Producto"                                                */}
+      {/* MODAL: "Nuevo Producto" & "Importar Lista Masiva" (TOTALMENTE LIMPIO)      */}
       {/* ========================================================================= */}
       {modalNuevoAbierto && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+          <div className="bg-white border border-zinc-200 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-scale-up">
             {/* Cabecera del modal */}
             <div className="p-4 sm:p-5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Plus className="w-5 h-5 text-black" />
                 <h3 className="font-bold text-zinc-900 text-base font-display">
-                  Nuevo Producto
+                  Agregar Insumos al Inventario
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setModalNuevoAbierto(false)}
-                className="p-1 text-zinc-400 hover:text-black cursor-pointer"
+                className="p-1 text-zinc-400 hover:text-black cursor-pointer rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Pestañas de selección de sección dentro del formulario */}
-            <div className="flex border-b border-zinc-200 bg-zinc-50">
+            {/* Pestañas de selección: Manual vs Importar Masivo */}
+            <div className="flex border-b border-zinc-200 bg-zinc-100/60 p-1.5 gap-1.5">
               <button
                 type="button"
                 onClick={() => setSeccionModal('manual')}
-                className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   seccionModal === 'manual'
-                    ? 'bg-white text-black border-b-2 border-black font-bold'
-                    : 'text-zinc-500 hover:text-black'
+                    ? 'bg-white text-black shadow-xs font-bold'
+                    : 'text-zinc-600 hover:text-black'
                 }`}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Registrar Nuevo Producto</span>
+                <span>Formulario Individual</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSeccionModal('importar')}
-                className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   seccionModal === 'importar'
-                    ? 'bg-white text-black border-b-2 border-black font-bold'
-                    : 'text-zinc-500 hover:text-black'
+                    ? 'bg-white text-black shadow-xs font-bold'
+                    : 'text-zinc-600 hover:text-black'
                 }`}
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Importar Lista Masiva (Excel / Sheets)</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Importar Lista Excel / CSV</span>
               </button>
             </div>
 
             <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
-              {/* SECCIÓN 1: REGISTRAR NUEVO PRODUCTO */}
+              {/* SECCIÓN 1: FORMULARIO INDIVIDUAL (LIMPIO DE ICONOS ERRÓNEOS) */}
               {seccionModal === 'manual' && (
                 <form onSubmit={handleSubmitNuevoProducto} className="space-y-4">
-                  {/* Nombre */}
                   <div>
                     <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                       Nombre del Producto *
@@ -479,24 +853,10 @@ export default function GestionProductosView() {
                       value={nombre}
                       onChange={(e) => setNombre(e.target.value)}
                       required
-                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
                     />
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {/* Proveedor con ComboBox con búsqueda */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="block text-xs font-bold text-zinc-700">
@@ -509,20 +869,7 @@ export default function GestionProductosView() {
                       >
                         {mostrarCrearProv ? 'Cancelar nuevo proveedor' : '+ Crear nuevo proveedor'}
                       </button>
-                      {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                    </div>
 
                     {mostrarCrearProv ? (
                       <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2 mb-2">
@@ -530,7 +877,7 @@ export default function GestionProductosView() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <input
                             type="text"
-                            placeholder="Nombre proveedor (ej: Colanta)"
+                            placeholder="Nombre proveedor (ej: Colanta, Distripapa)"
                             value={nombreNuevoProv}
                             onChange={(e) => setNombreNuevoProv(e.target.value)}
                             className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900"
@@ -542,20 +889,7 @@ export default function GestionProductosView() {
                             onChange={(e) => setTelefonoNuevoProv(e.target.value)}
                             className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900"
                           />
-                          {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                        </div>
                         <button
                           type="button"
                           onClick={handleCrearProveedorRapido}
@@ -563,20 +897,7 @@ export default function GestionProductosView() {
                         >
                           Guardar Proveedor
                         </button>
-                        {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                      </div>
                     ) : (
                       <SearchableSelect
                         options={opcionesProveedores}
@@ -586,22 +907,8 @@ export default function GestionProductosView() {
                         searchPlaceholder="Escribe para buscar proveedor..."
                       />
                     )}
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {/* Unidad con ComboBox con búsqueda */}
                   <div>
                     <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                       Unidad de Medida
@@ -614,89 +921,35 @@ export default function GestionProductosView() {
                       searchPlaceholder="Buscar unidad (kg, lb, bolsa...)"
                       allowCustom={true}
                     />
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {/* Stock actual y Stock mínimo: CAMPOS DE TEXTO SOLO NÚMEROS SIN FLECHAS */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                        Stock Actual (Solo número)
+                        Stock Actual Disponible
                       </label>
                       <NumericInput
                         value={stockInicial}
                         onChange={setStockInicial}
                         placeholder="0"
-                        className="w-full"
+                        className="w-full font-mono font-bold"
                       />
-                      {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                    </div>
 
                     <div>
                       <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                        Stock Mínimo (Solo número)
+                        Stock Mínimo (Alerta)
                       </label>
                       <NumericInput
                         value={stockMinimo}
                         onChange={setStockMinimo}
                         placeholder="2"
-                        className="w-full"
+                        className="w-full font-mono font-bold"
                       />
-                      {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </div>
                   </div>
 
-                  {/* Botón de envío */}
-                  <div className="pt-2 flex justify-end gap-2">
+                  <div className="pt-3 flex justify-end gap-2 border-t border-zinc-100">
                     <button
                       type="button"
                       onClick={() => setModalNuevoAbierto(false)}
@@ -710,71 +963,159 @@ export default function GestionProductosView() {
                     >
                       Guardar Producto
                     </button>
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </form>
               )}
 
-              {/* SECCIÓN 2: IMPORTAR LISTA MASIVA (SOLO CON EL BOTÓN DE IMPORTAR PRODUCTOS) */}
+              {/* SECCIÓN 2: IMPORTAR LISTA MASIVA DE EXCEL CON PLANTILLA DESCARGABLE */}
               {seccionModal === 'importar' && (
                 <div className="space-y-4">
-                  <p className="text-xs text-zinc-600 leading-relaxed">
-                    Pega las filas copiadas desde Excel o Google Sheets con las columnas en este orden:
-                    <br />
-                    <code className="inline-block mt-1 bg-zinc-100 px-2 py-1 rounded text-zinc-900 font-mono border border-zinc-200">
-                      Proveedor, Producto, Unidad, Stock Inicial
-                    </code>
-                  </p>
+                  <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-emerald-950 flex items-center gap-1.5">
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                          <span>Plantilla Oficial de Excel / Sheets</span>
+                        </h4>
+                        <p className="text-xs text-emerald-800 mt-0.5">
+                          Descarga la plantilla con los títulos de columnas listos para llenarla en Excel y cargarla en 1 clic:
+                        </p>
+                      </div>
 
-                  <textarea
-                    rows={6}
-                    placeholder="Distripapa	Papa pastusa	bulto	2&#10;Mercado	Tomate	kg	5&#10;Ara	Queso mozzarella	bloque	4&#10;Paula	Pepperoni	kg	3"
-                    value={textoImportar}
-                    onChange={(e) => setTextoImportar(e.target.value)}
-                    className="w-full p-3 font-mono text-xs bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
-                  />
+                      <button
+                        type="button"
+                        onClick={handleDescargarPlantillaExcel}
+                        className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2 shrink-0 self-start sm:self-auto"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Descargar Plantilla (.csv)</span>
+                      </button>
+                    </div>
 
-                  {mensajeImportacion && (
-                    <p className="text-xs font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
-                      {mensajeImportacion}
-                    </p>
+                    <div className="bg-white rounded-xl border border-emerald-200/80 overflow-x-auto text-[11px]">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-emerald-100/60 text-emerald-950 font-bold border-b border-emerald-200/80">
+                            <th className="p-2">Columna 1: Proveedor</th>
+                            <th className="p-2">Columna 2: Producto</th>
+                            <th className="p-2">Columna 3: Unidad</th>
+                            <th className="p-2">Columna 4: Stock_Actual</th>
+                            <th className="p-2">Columna 5: Stock_Minimo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-emerald-100 text-zinc-700 font-mono">
+                          <tr>
+                            <td className="p-2 font-semibold text-emerald-900">ARA</td>
+                            <td className="p-2">Queso mozzarella</td>
+                            <td className="p-2">bloque</td>
+                            <td className="p-2">10</td>
+                            <td className="p-2">4</td>
+                          </tr>
+                          <tr>
+                            <td className="p-2 font-semibold text-emerald-900">DISTRIPAPA</td>
+                            <td className="p-2">Papa criolla</td>
+                            <td className="p-2">kg</td>
+                            <td className="p-2">15</td>
+                            <td className="p-2">5</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-zinc-700">
+                        Pega los datos de Excel o carga tu archivo CSV:
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs text-black font-semibold hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>Cargar archivo desde mi PC</span>
+                      </button>
+                    </div>
+
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleArchivoCargado}
+                      accept=".csv, .txt, .tsv"
+                      className="hidden"
+                    />
+
+                    <textarea
+                      rows={5}
+                      placeholder="ARA	Queso mozzarella	bloque	10	4&#10;DISTRIPAPA	Papa criolla	kg	15	5&#10;MERCADO	Tomate chonto	kg	20	5"
+                      value={textoImportar}
+                      onChange={(e) => setTextoImportar(e.target.value)}
+                      className="w-full p-3 font-mono text-xs bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                    />
+                  </div>
+
+                  {filasPrevisualizadas.length > 0 && (
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-bold text-zinc-800">
+                        <span className="flex items-center gap-1.5 text-emerald-800">
+                          <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+                          {filasPrevisualizadas.length} productos detectados listos para importar:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTextoImportar('')}
+                          className="text-zinc-400 hover:text-rose-600 text-[11px] underline cursor-pointer"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+
+                      <div className="max-h-36 overflow-y-auto divide-y divide-zinc-200 text-xs bg-white rounded-xl border border-zinc-200">
+                        {filasPrevisualizadas.slice(0, 10).map((f, idx) => (
+                          <div key={idx} className="p-2 flex items-center justify-between gap-2 font-mono text-[11px]">
+                            <span className="font-bold text-zinc-900">{f.producto}</span>
+                            <span className="text-zinc-500 font-sans">({f.proveedor})</span>
+                            <span className="text-zinc-700 font-semibold">{f.stock} {f.unidad}</span>
+                          </div>
+                        ))}
+                        {filasPrevisualizadas.length > 10 && (
+                          <p className="p-2 text-center text-zinc-400 text-[11px] italic">
+                            ... y {filasPrevisualizadas.length - 10} productos más
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
 
-                  {/* SOLO EL BOTÓN DE IMPORTAR PRODUCTOS */}
-                  <div className="pt-2 flex justify-end">
+                  {mensajeImportacion && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{mensajeImportacion}</span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex justify-end gap-2 border-t border-zinc-100">
                     <button
                       type="button"
-                      onClick={handleImportarExcel}
-                      disabled={!textoImportar.trim()}
+                      onClick={() => setModalNuevoAbierto(false)}
+                      className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold rounded-xl text-xs cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleEjecutarImportacion}
+                      disabled={filasPrevisualizadas.length === 0 || importando}
                       className="px-5 py-2.5 bg-black hover:bg-zinc-800 disabled:opacity-40 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Upload className="w-4 h-4" />
-                      <span>Importar Productos</span>
-                    </button>
-                    {/* Botón Eliminar Individual */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                          eliminarProducto(prod.id);
-                        }
-                      }}
-                      className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar producto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>
+                        {importando 
+                          ? 'Importando a la base de datos...' 
+                          : `Importar ${filasPrevisualizadas.length} Productos`}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -785,11 +1126,92 @@ export default function GestionProductosView() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. MODAL: EDICIÓN DE PRODUCTO EXISTENTE                                    */}
+      {/* MODAL: "Nuevo / Editar Proveedor" (SECCIÓN PROVEEDORES)                    */}
+      {/* ========================================================================= */}
+      {modalProveedorAbierto && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
+              <h3 className="font-bold text-zinc-900 text-base font-display flex items-center gap-2">
+                <Store className="w-4 h-4 text-black" />
+                <span>{proveedorEnEdicion ? 'Editar Proveedor' : 'Nuevo Proveedor'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalProveedorAbierto(false)}
+                className="p-1 text-zinc-400 hover:text-black cursor-pointer rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitProveedor} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Nombre del Proveedor *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. ARA, Distripapa, D1, Colanta..."
+                  value={formProvNombre}
+                  onChange={(e) => setFormProvNombre(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Teléfono / WhatsApp (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. +573001234567"
+                  value={formProvTelefono}
+                  onChange={(e) => setFormProvTelefono(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Notas / Días de Entrega (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ej. Pedidos antes de las 2 PM, entregan martes y viernes..."
+                  value={formProvNotas}
+                  onChange={(e) => setFormProvNotas(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-black"
+                />
+              </div>
+
+              <div className="pt-3 flex gap-2 justify-end border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setModalProveedorAbierto(false)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold rounded-xl text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
+                >
+                  {proveedorEnEdicion ? 'Guardar Cambios' : 'Crear Proveedor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EDICIÓN DE PRODUCTO EXISTENTE                                      */}
       {/* ========================================================================= */}
       {productoEnEdicion && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95">
+          <div className="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4 animate-scale-up">
             <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
               <h3 className="font-bold text-zinc-900 text-base font-display flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-black" />
@@ -798,7 +1220,7 @@ export default function GestionProductosView() {
               <button
                 type="button"
                 onClick={() => setProductoEnEdicion(null)}
-                className="p-1 text-zinc-400 hover:text-black cursor-pointer"
+                className="p-1 text-zinc-400 hover:text-black cursor-pointer rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -812,7 +1234,7 @@ export default function GestionProductosView() {
                   value={productoEnEdicion.nombre}
                   onChange={(e) => setProductoEnEdicion({ ...productoEnEdicion, nombre: e.target.value })}
                   required
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black"
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium"
                 />
               </div>
 
@@ -844,14 +1266,13 @@ export default function GestionProductosView() {
                 />
               </div>
 
-              {/* CAMPOS SOLO NUMÉRICOS SIN FLECHAS */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">Stock Actual</label>
                   <NumericInput
                     value={productoEnEdicion.stock}
                     onChange={(val) => setProductoEnEdicion({ ...productoEnEdicion, stock: val })}
-                    className="w-full"
+                    className="w-full font-mono font-bold"
                   />
                 </div>
 
@@ -860,12 +1281,12 @@ export default function GestionProductosView() {
                   <NumericInput
                     value={productoEnEdicion.stockMinimo}
                     onChange={(val) => setProductoEnEdicion({ ...productoEnEdicion, stockMinimo: val })}
-                    className="w-full"
+                    className="w-full font-mono font-bold"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 flex gap-2 justify-end">
+              <div className="pt-3 flex gap-2 justify-end border-t border-zinc-100">
                 <button
                   type="button"
                   onClick={() => setProductoEnEdicion(null)}

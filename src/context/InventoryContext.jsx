@@ -66,12 +66,13 @@ export function InventoryProvider({ children }) {
   });
 
   const [notificacion, setNotificacion] = useState(null);
+  const [errorFirebase, setErrorFirebase] = useState(null);
 
   const mostrarAlerta = (mensaje, tipo = 'info') => {
     setNotificacion({ mensaje, tipo, id: Date.now() });
     setTimeout(() => {
       setNotificacion(prev => (prev?.mensaje === mensaje ? null : prev));
-    }, 3500);
+    }, 4500);
   };
 
   // Guardar en localStorage siempre como caché y fallback
@@ -125,31 +126,42 @@ export function InventoryProvider({ children }) {
   useEffect(() => {
     if (!isFirebaseConfigured || !db) return;
 
+    const manejarErrorFirebase = (err, recurso) => {
+      console.warn(`Error escuchando ${recurso} en Firestore:`, err);
+      if (err.code === 'permission-denied') {
+        setErrorFirebase('permission-denied');
+      } else {
+        setErrorFirebase(err.code || 'error-conexion');
+      }
+    };
+
     const unsubs = [];
 
     // Escuchar productos
     const unsubProductos = onSnapshot(collection(db, 'productos'), (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setProductos(list);
-    }, (err) => console.warn('Error escuchando productos en Firestore:', err));
+      setErrorFirebase(null);
+    }, (err) => manejarErrorFirebase(err, 'productos'));
     unsubs.push(unsubProductos);
 
     // Escuchar proveedores
     const unsubProveedores = onSnapshot(collection(db, 'proveedores'), (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setProveedores(list);
-    }, (err) => console.warn('Error escuchando proveedores en Firestore:', err));
+      setErrorFirebase(null);
+    }, (err) => manejarErrorFirebase(err, 'proveedores'));
     unsubs.push(unsubProveedores);
 
     // Escuchar pedidos
     const unsubPedidos = onSnapshot(collection(db, 'pedidos'), (snap) => {
       if (!snap.empty) {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Ordenar por fecha descendente
         list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
         setPedidos(list);
       }
-    }, (err) => console.warn('Error escuchando pedidos en Firestore:', err));
+      setErrorFirebase(null);
+    }, (err) => manejarErrorFirebase(err, 'pedidos'));
     unsubs.push(unsubPedidos);
 
     return () => unsubs.forEach(unsub => unsub && unsub());
@@ -160,8 +172,15 @@ export function InventoryProvider({ children }) {
     if (isFirebaseConfigured && db) {
       try {
         await setDoc(doc(db, colName, id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+        setErrorFirebase(null);
       } catch (err) {
         console.error(`Error guardando en ${colName}:`, err);
+        if (err.code === 'permission-denied') {
+          setErrorFirebase('permission-denied');
+          mostrarAlerta('⚠️ Firebase bloqueó el guardado: Debes permitir lectura y escritura en las Reglas de Firebase Console.', 'danger');
+        } else {
+          mostrarAlerta(`⚠️ Error guardando en Firebase: ${err.message}`, 'danger');
+        }
       }
     }
   };
@@ -286,6 +305,40 @@ export function InventoryProvider({ children }) {
     await syncDoc('proveedores', id, item);
     mostrarAlerta(`Proveedor "${item.nombre}" agregado`, 'success');
     return item;
+  };
+
+  const actualizarProveedor = async (id, datosActualizados) => {
+    const item = { ...datosActualizados, id };
+    setProveedores(prev => prev.map(p => p.id === id ? item : p));
+
+    // Si cambió el nombre del proveedor, sincronizar los productos vinculados
+    if (datosActualizados.nombre) {
+      setProductos(prev => prev.map(prod => {
+        if (prod.proveedorId === id) {
+          const prodActualizado = { ...prod, proveedorNombre: datosActualizados.nombre };
+          syncDoc('productos', prod.id, prodActualizado);
+          return prodActualizado;
+        }
+        return prod;
+      }));
+    }
+
+    await syncDoc('proveedores', id, item);
+    mostrarAlerta(`Proveedor "${item.nombre}" actualizado`, 'success');
+    return item;
+  };
+
+  const eliminarProveedor = async (id) => {
+    const prov = proveedores.find(p => p.id === id);
+    setProveedores(prev => prev.filter(p => p.id !== id));
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteDoc(doc(db, 'proveedores', id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    mostrarAlerta(`Proveedor "${prov?.nombre || ''}" eliminado`, 'info');
   };
 
   // --- Operaciones de Pedidos (El flujo central) ---
@@ -531,6 +584,7 @@ export function InventoryProvider({ children }) {
       pedidos,
       movimientos,
       notificacion,
+      errorFirebase,
       mostrarAlerta,
       agregarProducto,
       actualizarStock,
@@ -539,6 +593,8 @@ export function InventoryProvider({ children }) {
       eliminarProducto,
       toggleHabilitarProducto,
       agregarProveedor,
+      actualizarProveedor,
+      eliminarProveedor,
       crearPedido,
       confirmarRecepcionItems,
       confirmarItemIndividual,

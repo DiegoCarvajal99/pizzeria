@@ -11,8 +11,22 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 
-// Cargar configuración guardada por el usuario en localStorage o variables de entorno
+// Priorizar variables de entorno (.env), con fallback a localStorage
 const getSavedFirebaseConfig = () => {
+  const envConfig = {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
+  };
+
+  // Si las variables de entorno están presentes y son válidas, usarlas de forma prioritaria
+  if (envConfig.apiKey && envConfig.projectId && !envConfig.apiKey.includes('tu_api_key')) {
+    return envConfig;
+  }
+
   try {
     const custom = localStorage.getItem('pizzeria_firebase_config');
     if (custom) {
@@ -25,14 +39,7 @@ const getSavedFirebaseConfig = () => {
     console.error("Error leyendo configuración personalizada de Firebase:", e);
   }
 
-  return {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
-  };
+  return envConfig;
 };
 
 const firebaseConfig = getSavedFirebaseConfig();

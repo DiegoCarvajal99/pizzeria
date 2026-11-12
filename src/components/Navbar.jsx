@@ -26,9 +26,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   return (
     <header className="sticky top-0 z-30 bg-black border-b border-zinc-800 shadow-xl">
-      <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-4 md:gap-6">
+      <div className="max-w-4xl w-full mx-auto px-4 py-2.5 flex items-center justify-center sm:justify-start gap-4 sm:gap-6">
         
-        {/* LADO IZQUIERDO: LOGO LIACO PIZZERIA */}
+        {/* LOGO LIACO PIZZERIA (Centrado en móvil, alineado a la izquierda en desktop) */}
         <div 
           onClick={() => setActiveTab('home')}
           className="flex items-center gap-2 cursor-pointer shrink-0 group py-1"
@@ -37,12 +37,12 @@ export default function Navbar({ activeTab, setActiveTab }) {
           <img 
             src="/logo.png" 
             alt="LIACO PIZZERIA" 
-            className="h-9 sm:h-10 w-auto object-contain group-hover:scale-105 transition-transform"
+            className="h-8 sm:h-9 w-auto object-contain group-hover:scale-105 transition-transform"
           />
         </div>
 
-        {/* CENTRO / OPCIONES DEL MENÚ */}
-        <nav className="flex-1 flex items-center justify-end md:justify-start space-x-1 sm:space-x-1.5 overflow-x-auto no-scrollbar py-1">
+        {/* OPCIONES DEL MENÚ: AL LADO DEL LOGO EN ESCRITORIO (sm:flex), OCULTO EN MÓVIL (hidden) */}
+        <nav className="hidden sm:flex items-center space-x-1 sm:space-x-1.5 py-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
