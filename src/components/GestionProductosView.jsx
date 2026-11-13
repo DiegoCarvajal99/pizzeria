@@ -35,7 +35,6 @@ export default function GestionProductosView() {
     agregarProveedor,
     actualizarProveedor,
     eliminarProveedor,
-    limpiarDatosDePrueba,
     solicitarConfirmacion,
     mostrarAlerta 
   } = useInventory();
@@ -300,21 +299,6 @@ export default function GestionProductosView() {
     });
   };
 
-  const handleLimpiarDatosPruebaClick = () => {
-    solicitarConfirmacion({
-      titulo: '¿Borrar datos de prueba?',
-      mensaje: '¿Estás seguro de que deseas vaciar los datos de prueba? Tu catálogo quedará limpio para registrar insumos reales.',
-      textoConfirmar: 'Sí, eliminar',
-      textoCancelar: 'Descartar',
-      tipo: 'danger',
-      onConfirmar: async () => {
-        if (limpiarDatosDePrueba) {
-          await limpiarDatosDePrueba();
-        }
-      }
-    });
-  };
-
   // =========================================================================
   // IMPORTACIÓN DE EXCEL / CSV
   // =========================================================================
@@ -519,18 +503,6 @@ export default function GestionProductosView() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {productos.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleLimpiarDatosPruebaClick}
-                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                  title="Borrar datos de prueba para dejar el sistema limpio"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Limpiar datos de prueba</span>
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={() => {
