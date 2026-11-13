@@ -35,6 +35,7 @@ export default function PedidosView() {
     confirmarRecepcionItems, 
     confirmarItemIndividual, 
     cancelarPedido, 
+    solicitarConfirmacion,
     mostrarAlerta 
   } = useInventory();
 
@@ -426,10 +427,10 @@ export default function PedidosView() {
             <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar pedido por ID..."
+              placeholder="BUSCAR PEDIDO POR ID..."
               value={busquedaPedidoId}
-              onChange={(e) => setBusquedaPedidoId(e.target.value)}
-              className="w-full pl-8 pr-7 py-1.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black transition-colors"
+              onChange={(e) => setBusquedaPedidoId(e.target.value.toUpperCase())}
+              className="w-full pl-8 pr-7 py-1.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black transition-colors uppercase"
             />
             {busquedaPedidoId && (
               <button
@@ -587,9 +588,14 @@ export default function PedidosView() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm('¿Deseas cancelar este pedido?')) {
-                            cancelarPedido(pedido.id);
-                          }
+                          solicitarConfirmacion({
+                            titulo: '¿Cancelar pedido?',
+                            mensaje: `¿Estás seguro de que deseas cancelar el pedido #${pedido.numero}?`,
+                            textoConfirmar: 'Sí, cancelar',
+                            textoCancelar: 'Descartar',
+                            tipo: 'danger',
+                            onConfirmar: () => cancelarPedido(pedido.id)
+                          });
                         }}
                         className="p-2 text-zinc-400 hover:text-rose-600 transition-colors cursor-pointer"
                         title="Cancelar pedido"
@@ -800,10 +806,10 @@ export default function PedidosView() {
                     <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
                     <input
                       type="text"
-                      placeholder="Buscar por nombre o proveedor..."
+                      placeholder="BUSCAR POR NOMBRE O PROVEEDOR..."
                       value={busqueda}
-                      onChange={(e) => setBusqueda(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                      onChange={(e) => setBusqueda(e.target.value.toUpperCase())}
+                      className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                     />
                   </div>
 
@@ -989,10 +995,10 @@ export default function PedidosView() {
                       </label>
                       <input
                         type="text"
-                        placeholder="Ej. Entregar antes de las 11:00 AM / Traer factura"
+                        placeholder="EJ. ENTREGAR ANTES DE LAS 11:00 AM / TRAER FACTURA"
                         value={observacionGeneral}
-                        onChange={(e) => setObservacionGeneral(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                        onChange={(e) => setObservacionGeneral(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                       />
                     </div>
                   </div>
@@ -1080,10 +1086,10 @@ export default function PedidosView() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej. maduro, marca específica..."
+                  placeholder="EJ. MADURO, MARCA ESPECÍFICA..."
                   value={notaModal}
-                  onChange={(e) => setNotaModal(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                  onChange={(e) => setNotaModal(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                 />
               </div>
 

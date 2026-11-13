@@ -89,9 +89,9 @@ export default function SearchableSelect({
               ref={inputRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => setQuery(e.target.value.toUpperCase())}
               placeholder={searchPlaceholder}
-              className="w-full pl-8 pr-7 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+              className="w-full pl-8 pr-7 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
             />
             {query && (
               <button
@@ -111,10 +111,10 @@ export default function SearchableSelect({
                 {allowCustom && query ? (
                   <button
                     type="button"
-                    onClick={() => handleSelect(query.trim())}
-                    className="text-black font-semibold hover:underline"
+                    onClick={() => handleSelect(query.trim().toUpperCase())}
+                    className="text-black font-bold hover:underline"
                   >
-                    Usar "{query.trim()}"
+                    Usar "{query.trim().toUpperCase()}"
                   </button>
                 ) : (
                   'No hay coincidencias'

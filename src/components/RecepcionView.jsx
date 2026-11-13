@@ -16,7 +16,14 @@ import {
 } from 'lucide-react';
 
 export default function RecepcionView() {
-  const { pedidos, confirmarRecepcionItems, confirmarItemIndividual, cancelarPedido, mostrarAlerta } = useInventory();
+  const { 
+    pedidos, 
+    confirmarRecepcionItems, 
+    confirmarItemIndividual, 
+    cancelarPedido, 
+    solicitarConfirmacion,
+    mostrarAlerta 
+  } = useInventory();
   const [filtroEstado, setFiltroEstado] = useState('pendientes'); // 'pendientes' | 'completados' | 'todos'
   const [cantidadesRecibidas, setCantidadesRecibidas] = useState({});
 
@@ -330,9 +337,14 @@ export default function RecepcionView() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm('¿Deseas cancelar este pedido?')) {
-                            cancelarPedido(pedido.id);
-                          }
+                          solicitarConfirmacion({
+                            titulo: '¿Cancelar pedido?',
+                            mensaje: `¿Estás seguro de que deseas cancelar el pedido #${pedido.numero}?`,
+                            textoConfirmar: 'Sí, cancelar',
+                            textoCancelar: 'Descartar',
+                            tipo: 'danger',
+                            onConfirmar: () => cancelarPedido(pedido.id)
+                          });
                         }}
                         className="p-2 text-zinc-400 hover:text-rose-600 transition-colors cursor-pointer"
                         title="Cancelar pedido"

@@ -66,14 +66,43 @@ export function InventoryProvider({ children }) {
   });
 
   const [notificacion, setNotificacion] = useState(null);
+  const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [errorFirebase, setErrorFirebase] = useState(null);
 
-  const mostrarAlerta = (mensaje, tipo = 'info') => {
-    setNotificacion({ mensaje, tipo, id: Date.now() });
+  const mostrarAlerta = (mensaje, tipo = 'success', titulo = '') => {
+    setNotificacion({ mensaje, tipo, titulo, id: Date.now() });
     setTimeout(() => {
       setNotificacion(prev => (prev?.mensaje === mensaje ? null : prev));
-    }, 4500);
+    }, 4000);
   };
+
+  const cerrarAlerta = () => setNotificacion(null);
+
+  const solicitarConfirmacion = ({
+    titulo = '¿Eliminar registro?',
+    mensaje = '¿Estás seguro de que deseas eliminar este elemento? Esta acción no se puede deshacer.',
+    textoConfirmar = 'Sí, eliminar',
+    textoCancelar = 'Descartar',
+    tipo = 'danger',
+    onConfirmar
+  }) => {
+    setModalConfirmacion({
+      titulo,
+      mensaje,
+      textoConfirmar,
+      textoCancelar,
+      tipo,
+      onConfirmar: async () => {
+        setModalConfirmacion(null);
+        if (onConfirmar) await onConfirmar();
+      },
+      onCancelar: () => {
+        setModalConfirmacion(null);
+      }
+    });
+  };
+
+  const cerrarConfirmacion = () => setModalConfirmacion(null);
 
   // Guardar en localStorage siempre como caché y fallback
   useEffect(() => {
@@ -186,9 +215,18 @@ export function InventoryProvider({ children }) {
   };
 
   // --- Operaciones de Productos ---
-  const agregarProducto = async (nuevo) => {
+  const agregarProducto = async (nuevo, opciones = {}) => {
     const id = nuevo.id || 'prod_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const item = { ...nuevo, id, stock: Number(nuevo.stock) || 0, stockMinimo: Number(nuevo.stockMinimo) || 0 };
+    const item = { 
+      ...nuevo, 
+      id, 
+      nombre: String(nuevo.nombre || '').trim().toUpperCase(),
+      unidad: String(nuevo.unidad || 'UNIDAD').trim().toUpperCase(),
+      proveedorNombre: String(nuevo.proveedorNombre || '').trim().toUpperCase(),
+      stock: Number(nuevo.stock) || 0, 
+      stockMinimo: Number(nuevo.stockMinimo) || 0 
+    };
+    const existePreviamente = productos.some(p => p.id === id);
     
     setProductos(prev => {
       const existe = prev.some(p => p.id === id);
@@ -199,7 +237,13 @@ export function InventoryProvider({ children }) {
     });
 
     await syncDoc('productos', id, item);
-    mostrarAlerta(`Producto "${item.nombre}" guardado`, 'success');
+    if (!opciones.silencioso) {
+      if (existePreviamente) {
+        mostrarAlerta('Producto guardado correctamente', 'success', '¡Producto Guardado!');
+      } else {
+        mostrarAlerta('Producto creado correctamente', 'success', '¡Producto Creado!');
+      }
+    }
     return item;
   };
 
@@ -284,7 +328,7 @@ export function InventoryProvider({ children }) {
     );
   };
 
-  const eliminarProducto = async (id) => {
+  const eliminarProducto = async (id, opciones = {}) => {
     const prod = productos.find(p => p.id === id);
     setProductos(prev => prev.filter(p => p.id !== id));
     if (isFirebaseConfigured && db) {
@@ -294,28 +338,43 @@ export function InventoryProvider({ children }) {
         console.error(e);
       }
     }
-    mostrarAlerta(`Producto "${prod?.nombre || ''}" eliminado`, 'info');
+    if (!opciones.silencioso) {
+      mostrarAlerta('Producto eliminado correctamente', 'info', 'Producto Eliminado');
+    }
   };
 
   // --- Operaciones de Proveedores ---
-  const agregarProveedor = async (nuevo) => {
+  const agregarProveedor = async (nuevo, opciones = {}) => {
     const id = nuevo.id || 'prov_' + Date.now().toString(36);
-    const item = { ...nuevo, id };
+    const item = { 
+      ...nuevo, 
+      id,
+      nombre: String(nuevo.nombre || '').trim().toUpperCase(),
+      notas: String(nuevo.notas || '').trim().toUpperCase()
+    };
     setProveedores(prev => [...prev, item]);
     await syncDoc('proveedores', id, item);
-    mostrarAlerta(`Proveedor "${item.nombre}" agregado`, 'success');
+    if (!opciones.silencioso) {
+      mostrarAlerta('Proveedor creado correctamente', 'success', '¡Proveedor Creado!');
+    }
     return item;
   };
 
-  const actualizarProveedor = async (id, datosActualizados) => {
-    const item = { ...datosActualizados, id };
+  const actualizarProveedor = async (id, datosActualizados, opciones = {}) => {
+    const item = { 
+      ...datosActualizados, 
+      id,
+      nombre: String(datosActualizados.nombre || '').trim().toUpperCase(),
+      notas: String(datosActualizados.notas || '').trim().toUpperCase()
+    };
     setProveedores(prev => prev.map(p => p.id === id ? item : p));
 
     // Si cambió el nombre del proveedor, sincronizar los productos vinculados
     if (datosActualizados.nombre) {
+      const nombreMayus = String(datosActualizados.nombre).trim().toUpperCase();
       setProductos(prev => prev.map(prod => {
         if (prod.proveedorId === id) {
-          const prodActualizado = { ...prod, proveedorNombre: datosActualizados.nombre };
+          const prodActualizado = { ...prod, proveedorNombre: nombreMayus };
           syncDoc('productos', prod.id, prodActualizado);
           return prodActualizado;
         }
@@ -324,11 +383,13 @@ export function InventoryProvider({ children }) {
     }
 
     await syncDoc('proveedores', id, item);
-    mostrarAlerta(`Proveedor "${item.nombre}" actualizado`, 'success');
+    if (!opciones.silencioso) {
+      mostrarAlerta('Proveedor guardado correctamente', 'success', '¡Proveedor Guardado!');
+    }
     return item;
   };
 
-  const eliminarProveedor = async (id) => {
+  const eliminarProveedor = async (id, opciones = {}) => {
     const prov = proveedores.find(p => p.id === id);
     setProveedores(prev => prev.filter(p => p.id !== id));
     if (isFirebaseConfigured && db) {
@@ -338,7 +399,9 @@ export function InventoryProvider({ children }) {
         console.error(e);
       }
     }
-    mostrarAlerta(`Proveedor "${prov?.nombre || ''}" eliminado`, 'info');
+    if (!opciones.silencioso) {
+      mostrarAlerta('Proveedor eliminado correctamente', 'info', 'Proveedor Eliminado');
+    }
   };
 
   // --- Operaciones de Pedidos (El flujo central) ---
@@ -543,11 +606,6 @@ export function InventoryProvider({ children }) {
   };
 
   const limpiarDatosDePrueba = async () => {
-    const confirmar = window.confirm(
-      '¿Deseas vaciar todos los datos de prueba? Esto dejará el sistema 100% limpio en blanco para ingresar tus datos reales.'
-    );
-    if (!confirmar) return;
-
     setProductos([]);
     setProveedores([]);
     setPedidos([]);
@@ -584,8 +642,12 @@ export function InventoryProvider({ children }) {
       pedidos,
       movimientos,
       notificacion,
+      modalConfirmacion,
       errorFirebase,
       mostrarAlerta,
+      cerrarAlerta,
+      solicitarConfirmacion,
+      cerrarConfirmacion,
       agregarProducto,
       actualizarStock,
       registrarConsumo,

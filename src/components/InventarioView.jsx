@@ -327,10 +327,10 @@ export default function InventarioView() {
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3.5" />
                 <input
                   type="text"
-                  placeholder="Buscar insumo a descontar (ej: mozzarella, harina)..."
+                  placeholder="BUSCAR INSUMO A DESCONTAR (EJ. MOZZARELLA, HARINA)..."
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
+                  onChange={(e) => setBusqueda(e.target.value.toUpperCase())}
+                  className="w-full pl-9 pr-9 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium uppercase"
                 />
                 {busqueda && (
                   <button
@@ -595,10 +595,10 @@ export default function InventarioView() {
               <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="Buscar por insumo en la bitácora..."
+                placeholder="BUSCAR POR INSUMO EN LA BITÁCORA..."
                 value={filtroBitacoraBusqueda}
-                onChange={(e) => setFiltroBitacoraBusqueda(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
+                onChange={(e) => setFiltroBitacoraBusqueda(e.target.value.toUpperCase())}
+                className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium uppercase"
               />
             </div>
 

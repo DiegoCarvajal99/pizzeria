@@ -13,42 +13,141 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Info,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Trash2,
+  X
 } from 'lucide-react';
 
 function MainLayout() {
   // Pestaña principal por defecto: 'home'
   const [activeTab, setActiveTab] = useState('home');
-  const { notificacion, errorFirebase } = useInventory();
+  const { 
+    notificacion, 
+    modalConfirmacion, 
+    errorFirebase, 
+    cerrarAlerta 
+  } = useInventory();
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-body selection:bg-black selection:text-white">
       {/* Barra de navegación superior con diseño negro/blanco */}
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {/* Notificación flotante Toast */}
+      {/* =========================================================================
+          POPUP DE ALERTAS MODAL (Éxito, Error, Advertencia, Información)
+          ========================================================================= */}
       {notificacion && (
-        <div className="fixed top-20 right-4 z-50 max-w-sm animate-bounce-short">
-          <div className={`px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold flex items-center gap-2.5 ${
-            notificacion.tipo === 'success'
-              ? 'bg-white text-emerald-950 border-emerald-500/50 shadow-emerald-500/10'
-              : notificacion.tipo === 'warning'
-              ? 'bg-white text-amber-950 border-amber-500/50 shadow-amber-500/10'
-              : notificacion.tipo === 'danger'
-              ? 'bg-white text-rose-950 border-rose-500/50 shadow-rose-500/10'
-              : 'bg-white text-zinc-900 border-zinc-300'
-          }`}>
-            {notificacion.tipo === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-            {notificacion.tipo === 'warning' && <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />}
-            {notificacion.tipo === 'danger' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-            {notificacion.tipo === 'info' && <Info className="w-4 h-4 text-blue-600 shrink-0" />}
-            <span>{notificacion.mensaje}</span>
+        <div 
+          onClick={cerrarAlerta}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 text-center animate-scale-up space-y-4 relative"
+            role="alertdialog"
+          >
+            <button
+              type="button"
+              onClick={cerrarAlerta}
+              className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-black hover:bg-zinc-100 rounded-full cursor-pointer transition-colors"
+              title="Cerrar ventana"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {notificacion.tipo === 'success' && (
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+            )}
+            {notificacion.tipo === 'warning' && (
+              <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+            )}
+            {(notificacion.tipo === 'danger' || notificacion.tipo === 'error') && (
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-sm">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+            )}
+            {notificacion.tipo === 'info' && (
+              <div className="w-14 h-14 rounded-2xl bg-zinc-100 border border-zinc-200 text-zinc-800 flex items-center justify-center mx-auto shadow-sm">
+                <Info className="w-8 h-8" />
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-zinc-900 font-display">
+                {notificacion.titulo || (
+                  notificacion.tipo === 'success' ? '¡Operación Exitosa!' :
+                  notificacion.tipo === 'warning' ? 'Atención' :
+                  notificacion.tipo === 'danger' ? 'Error' : 'Información'
+                )}
+              </h3>
+              <p className="text-xs text-zinc-600 leading-relaxed font-medium">
+                {notificacion.mensaje}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={cerrarAlerta}
+                className="w-full py-2.5 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm transition-all cursor-pointer"
+              >
+                Aceptar
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Contenido principal de las vistas */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
+      {/* =========================================================================
+          POPUP DE CONFIRMACIÓN DE ELIMINACIÓN: OPCIÓN "DESCARTAR" Y "SÍ, ELIMINAR"
+          ========================================================================= */}
+      {modalConfirmacion && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div 
+            className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 text-center animate-scale-up space-y-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-sm">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-bold text-zinc-900 font-display">
+                {modalConfirmacion.titulo || '¿Eliminar elemento?'}
+              </h3>
+              <p className="text-xs text-zinc-600 leading-relaxed">
+                {modalConfirmacion.mensaje}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={modalConfirmacion.onCancelar}
+                className="flex-1 py-2.5 px-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                {modalConfirmacion.textoCancelar || 'Descartar'}
+              </button>
+              <button
+                type="button"
+                onClick={modalConfirmacion.onConfirmar}
+                className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{modalConfirmacion.textoConfirmar || 'Sí, eliminar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contenido principal de las vistas con espacio inferior en móvil para la barra de navegación */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 pb-24 sm:pb-8">
         {/* Banner de advertencia si las Reglas de Firebase no están publicadas */}
         {errorFirebase === 'permission-denied' && (
           <div className="mb-6 p-4 sm:p-5 bg-amber-50 border-2 border-amber-400 rounded-2xl text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">

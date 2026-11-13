@@ -21,7 +21,8 @@ import {
   FileText,
   Phone,
   MessageCircle,
-  UserPlus
+  UserPlus,
+  Loader2
 } from 'lucide-react';
 
 export default function GestionProductosView() {
@@ -35,6 +36,7 @@ export default function GestionProductosView() {
     actualizarProveedor,
     eliminarProveedor,
     limpiarDatosDePrueba,
+    solicitarConfirmacion,
     mostrarAlerta 
   } = useInventory();
 
@@ -48,6 +50,12 @@ export default function GestionProductosView() {
   const [seccionModal, setSeccionModal] = useState('manual'); // 'manual' | 'importar'
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
 
+  // Estados de carga (loading) para evitar clics dobles al guardar
+  const [guardandoProducto, setGuardandoProducto] = useState(false);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [guardandoProveedor, setGuardandoProveedor] = useState(false);
+  const [guardandoProvRapido, setGuardandoProvRapido] = useState(false);
+
   // Filtros de la lista de productos
   const [busqueda, setBusqueda] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('todos');
@@ -56,7 +64,7 @@ export default function GestionProductosView() {
   // Formulario registrar nuevo producto
   const [nombre, setNombre] = useState('');
   const [proveedorId, setProveedorId] = useState('');
-  const [unidad, setUnidad] = useState('kg');
+  const [unidad, setUnidad] = useState('KG');
   const [stockInicial, setStockInicial] = useState('0');
   const [stockMinimo, setStockMinimo] = useState('2');
 
@@ -115,64 +123,90 @@ export default function GestionProductosView() {
   // =========================================================================
   const handleSubmitNuevoProducto = async (e) => {
     e.preventDefault();
+    if (guardandoProducto) return;
+
     if (!nombre.trim() || !proveedorId) {
       if (mostrarAlerta) {
-        mostrarAlerta('Ingresa el nombre del producto y selecciona un proveedor.', 'warning');
+        mostrarAlerta('Ingresa el nombre del producto y selecciona un proveedor.', 'warning', 'Faltan datos');
       } else {
         alert('Ingresa el nombre del producto y selecciona un proveedor.');
       }
       return;
     }
 
-    const prov = proveedores.find(p => p.id === proveedorId);
+    setGuardandoProducto(true);
+    try {
+      const prov = proveedores.find(p => p.id === proveedorId);
 
-    await agregarProducto({
-      nombre: nombre.trim(),
-      proveedorId: prov?.id || '',
-      proveedorNombre: prov?.nombre || 'Proveedor',
-      unidad: (unidad || 'unidad').trim(),
-      stock: parseFloat(stockInicial) || 0,
-      stockMinimo: parseFloat(stockMinimo) || 1,
-      deshabilitado: false
-    });
+      await agregarProducto({
+        nombre: nombre.trim().toUpperCase(),
+        proveedorId: prov?.id || '',
+        proveedorNombre: (prov?.nombre || 'PROVEEDOR').toUpperCase(),
+        unidad: (unidad || 'KG').trim().toUpperCase(),
+        stock: parseFloat(stockInicial) || 0,
+        stockMinimo: parseFloat(stockMinimo) || 1,
+        deshabilitado: false
+      });
 
-    setNombre('');
-    setStockInicial('0');
-    setStockMinimo('2');
-    setModalNuevoAbierto(false);
+      setNombre('');
+      setStockInicial('0');
+      setStockMinimo('2');
+      setModalNuevoAbierto(false);
+    } catch (err) {
+      console.error(err);
+      if (mostrarAlerta) mostrarAlerta('Error guardando el producto.', 'danger');
+    } finally {
+      setGuardandoProducto(false);
+    }
   };
 
   const handleGuardarEdicion = async (e) => {
     e.preventDefault();
-    if (!productoEnEdicion || !productoEnEdicion.nombre.trim()) return;
+    if (guardandoEdicion || !productoEnEdicion || !productoEnEdicion.nombre.trim()) return;
 
-    const prov = proveedores.find(p => p.id === productoEnEdicion.proveedorId);
-    await agregarProducto({
-      ...productoEnEdicion,
-      nombre: productoEnEdicion.nombre.trim(),
-      proveedorNombre: prov ? prov.nombre : productoEnEdicion.proveedorNombre,
-      unidad: (productoEnEdicion.unidad || 'unidad').trim(),
-      stock: parseFloat(productoEnEdicion.stock) || 0,
-      stockMinimo: parseFloat(productoEnEdicion.stockMinimo) || 1
-    });
+    setGuardandoEdicion(true);
+    try {
+      const prov = proveedores.find(p => p.id === productoEnEdicion.proveedorId);
+      await agregarProducto({
+        ...productoEnEdicion,
+        nombre: productoEnEdicion.nombre.trim().toUpperCase(),
+        proveedorNombre: (prov ? prov.nombre : productoEnEdicion.proveedorNombre || '').toUpperCase(),
+        unidad: (productoEnEdicion.unidad || 'KG').trim().toUpperCase(),
+        stock: parseFloat(productoEnEdicion.stock) || 0,
+        stockMinimo: parseFloat(productoEnEdicion.stockMinimo) || 1
+      });
 
-    setProductoEnEdicion(null);
+      setProductoEnEdicion(null);
+    } catch (err) {
+      console.error(err);
+      if (mostrarAlerta) mostrarAlerta('Error guardando el producto.', 'danger');
+    } finally {
+      setGuardandoEdicion(false);
+    }
   };
 
   const handleCrearProveedorRapido = async (e) => {
     e.preventDefault();
-    if (!nombreNuevoProv.trim()) return;
+    if (guardandoProvRapido || !nombreNuevoProv.trim()) return;
 
-    const nuevo = await agregarProveedor({
-      nombre: nombreNuevoProv.trim(),
-      telefono: telefonoNuevoProv.trim(),
-      notas: ''
-    });
+    setGuardandoProvRapido(true);
+    try {
+      const nuevo = await agregarProveedor({
+        nombre: nombreNuevoProv.trim().toUpperCase(),
+        telefono: telefonoNuevoProv.trim(),
+        notas: ''
+      });
 
-    setProveedorId(nuevo.id);
-    setNombreNuevoProv('');
-    setTelefonoNuevoProv('');
-    setMostrarCrearProv(false);
+      setProveedorId(nuevo.id);
+      setNombreNuevoProv('');
+      setTelefonoNuevoProv('');
+      setMostrarCrearProv(false);
+    } catch (err) {
+      console.error(err);
+      if (mostrarAlerta) mostrarAlerta('Error creando proveedor rápido.', 'danger');
+    } finally {
+      setGuardandoProvRapido(false);
+    }
   };
 
   // =========================================================================
@@ -196,42 +230,89 @@ export default function GestionProductosView() {
 
   const handleSubmitProveedor = async (e) => {
     e.preventDefault();
+    if (guardandoProveedor) return;
+
     if (!formProvNombre.trim()) {
-      if (mostrarAlerta) mostrarAlerta('Ingresa el nombre del proveedor', 'warning');
+      if (mostrarAlerta) mostrarAlerta('Ingresa el nombre del proveedor.', 'warning', 'Faltan datos');
       return;
     }
 
-    if (proveedorEnEdicion) {
-      if (actualizarProveedor) {
-        await actualizarProveedor(proveedorEnEdicion.id, {
-          ...proveedorEnEdicion,
-          nombre: formProvNombre.trim(),
+    setGuardandoProveedor(true);
+    try {
+      if (proveedorEnEdicion) {
+        if (actualizarProveedor) {
+          await actualizarProveedor(proveedorEnEdicion.id, {
+            ...proveedorEnEdicion,
+            nombre: formProvNombre.trim().toUpperCase(),
+            telefono: formProvTelefono.trim(),
+            notas: formProvNotas.trim().toUpperCase()
+          });
+        }
+      } else {
+        await agregarProveedor({
+          nombre: formProvNombre.trim().toUpperCase(),
           telefono: formProvTelefono.trim(),
-          notas: formProvNotas.trim()
+          notas: formProvNotas.trim().toUpperCase()
         });
       }
-    } else {
-      await agregarProveedor({
-        nombre: formProvNombre.trim(),
-        telefono: formProvTelefono.trim(),
-        notas: formProvNotas.trim()
-      });
-    }
 
-    setModalProveedorAbierto(false);
+      setModalProveedorAbierto(false);
+    } catch (err) {
+      console.error(err);
+      if (mostrarAlerta) mostrarAlerta('Error guardando el proveedor.', 'danger');
+    } finally {
+      setGuardandoProveedor(false);
+    }
   };
 
-  const handleEliminarProveedorClick = async (prov) => {
+  const handleEliminarProveedorClick = (prov) => {
     const productosVinculados = productos.filter(p => p.proveedorId === prov.id);
     const mensaje = productosVinculados.length > 0
       ? `Este proveedor tiene ${productosVinculados.length} producto(s) asignado(s). ¿Estás seguro de que deseas eliminar a "${prov.nombre}"?`
-      : `¿Eliminar a "${prov.nombre}" del directorio de proveedores?`;
+      : `¿Estás seguro de que deseas eliminar a "${prov.nombre}" del directorio de proveedores?`;
 
-    if (window.confirm(mensaje)) {
-      if (eliminarProveedor) {
-        await eliminarProveedor(prov.id);
+    solicitarConfirmacion({
+      titulo: '¿Eliminar proveedor?',
+      mensaje,
+      textoConfirmar: 'Sí, eliminar',
+      textoCancelar: 'Descartar',
+      tipo: 'danger',
+      onConfirmar: async () => {
+        if (eliminarProveedor) {
+          await eliminarProveedor(prov.id);
+        }
       }
-    }
+    });
+  };
+
+  const handleEliminarProductoClick = (prod) => {
+    solicitarConfirmacion({
+      titulo: '¿Eliminar producto?',
+      mensaje: `¿Estás seguro de que deseas eliminar permanentemente "${prod.nombre}" del catálogo de insumos? Esta acción no se puede deshacer.`,
+      textoConfirmar: 'Sí, eliminar',
+      textoCancelar: 'Descartar',
+      tipo: 'danger',
+      onConfirmar: async () => {
+        if (eliminarProducto) {
+          await eliminarProducto(prod.id);
+        }
+      }
+    });
+  };
+
+  const handleLimpiarDatosPruebaClick = () => {
+    solicitarConfirmacion({
+      titulo: '¿Borrar datos de prueba?',
+      mensaje: '¿Estás seguro de que deseas vaciar los datos de prueba? Tu catálogo quedará limpio para registrar insumos reales.',
+      textoConfirmar: 'Sí, eliminar',
+      textoCancelar: 'Descartar',
+      tipo: 'danger',
+      onConfirmar: async () => {
+        if (limpiarDatosDePrueba) {
+          await limpiarDatosDePrueba();
+        }
+      }
+    });
   };
 
   // =========================================================================
@@ -334,24 +415,28 @@ export default function GestionProductosView() {
       let agregados = 0;
 
       for (const fila of filasPrevisualizadas) {
-        let prov = proveedores.find(p => p.nombre.toLowerCase() === fila.proveedor.toLowerCase());
+        const provMayus = fila.proveedor.trim().toUpperCase();
+        const prodMayus = fila.producto.trim().toUpperCase();
+        const unidadMayus = (fila.unidad.trim() || 'UNIDAD').toUpperCase();
+
+        let prov = proveedores.find(p => p.nombre.toUpperCase() === provMayus);
         if (!prov) {
           prov = await agregarProveedor({ 
-            nombre: fila.proveedor.trim(), 
+            nombre: provMayus, 
             telefono: '', 
-            notas: 'Creado automáticamente por importación masiva' 
-          });
+            notas: 'CREADO AUTOMÁTICAMENTE POR IMPORTACIÓN MASIVA' 
+          }, { silencioso: true });
         }
 
         await agregarProducto({
-          nombre: fila.producto.trim(),
+          nombre: prodMayus,
           proveedorId: prov.id,
           proveedorNombre: prov.nombre,
-          unidad: fila.unidad.trim() || 'unidad',
+          unidad: unidadMayus,
           stock: fila.stock,
           stockMinimo: fila.stockMinimo,
           deshabilitado: false
-        });
+        }, { silencioso: true });
 
         agregados++;
       }
@@ -437,7 +522,7 @@ export default function GestionProductosView() {
               {productos.length > 0 && (
                 <button
                   type="button"
-                  onClick={limpiarDatosDePrueba}
+                  onClick={handleLimpiarDatosPruebaClick}
                   className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
                   title="Borrar datos de prueba para dejar el sistema limpio"
                 >
@@ -469,8 +554,8 @@ export default function GestionProductosView() {
                   type="text"
                   placeholder="Buscar producto por nombre..."
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black"
+                  onChange={(e) => setBusqueda(e.target.value.toUpperCase())}
+                  className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                 />
               </div>
 
@@ -518,11 +603,11 @@ export default function GestionProductosView() {
 
           {/* Tabla de Productos */}
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
-            <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 hidden sm:grid sm:grid-cols-12 text-xs font-bold uppercase tracking-wider text-zinc-500">
-              <div className="col-span-5">Producto</div>
-              <div className="col-span-3">Proveedor</div>
+            <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 hidden sm:grid sm:grid-cols-12 text-xs font-bold uppercase tracking-wider text-zinc-500 gap-3 items-center">
+              <div className="col-span-4">Producto</div>
+              <div className="col-span-2">Proveedor</div>
               <div className="col-span-2">Unidad / Stock</div>
-              <div className="col-span-2 text-right">Acciones</div>
+              <div className="col-span-4 text-right">Acciones</div>
             </div>
 
             {productosFiltrados.length === 0 ? (
@@ -557,83 +642,157 @@ export default function GestionProductosView() {
                   return (
                     <div
                       key={prod.id}
-                      className={`p-4 sm:grid sm:grid-cols-12 sm:items-center gap-3 transition-colors ${
-                        estaDeshabilitado ? 'bg-zinc-50/50 opacity-60' : 'hover:bg-zinc-50/70'
+                      className={`p-3.5 sm:px-4 sm:py-3 transition-colors ${
+                        estaDeshabilitado ? 'bg-zinc-50/50 opacity-65' : 'hover:bg-zinc-50/70'
                       }`}
                     >
-                      <div className="col-span-5 flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${estaDeshabilitado ? 'bg-zinc-400' : 'bg-emerald-500'}`} />
-                        <div className="min-w-0">
-                          <p className={`font-bold text-sm truncate ${estaDeshabilitado ? 'line-through text-zinc-400' : 'text-zinc-900'}`}>
-                            {prod.nombre}
-                          </p>
+                      {/* VISTA ESCRITORIO (sm:grid) - DISTRIBUCIÓN AMPLIA SIN AMONTONAR */}
+                      <div className="hidden sm:grid sm:grid-cols-12 sm:items-center gap-3">
+                        {/* PRODUCTO (col-span-4) */}
+                        <div className="col-span-4 flex items-center gap-2.5 min-w-0">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${estaDeshabilitado ? 'bg-zinc-400' : 'bg-emerald-500'}`} />
+                          <div className="min-w-0">
+                            <p className={`font-bold text-sm truncate uppercase tracking-wide ${estaDeshabilitado ? 'line-through text-zinc-400' : 'text-zinc-900'}`}>
+                              {prod.nombre}
+                            </p>
+                            {estaDeshabilitado && (
+                              <span className="inline-block text-[10px] font-bold px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-500 border border-zinc-200 uppercase">
+                                Deshabilitado
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* PROVEEDOR (col-span-2) */}
+                        <div className="col-span-2 text-xs text-zinc-600 flex items-center gap-1.5 min-w-0">
+                          <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate uppercase font-medium">{prod.proveedorNombre || 'SIN PROVEEDOR'}</span>
+                        </div>
+
+                        {/* UNIDAD / STOCK (col-span-2) */}
+                        <div className="col-span-2 text-xs flex flex-col justify-center gap-0.5">
+                          <span className="font-bold text-zinc-900 px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200 uppercase text-[11px] w-fit">
+                            {prod.unidad}
+                          </span>
+                          <span className="text-zinc-500 font-mono text-[11px] whitespace-nowrap">
+                            Stock: <strong className="text-zinc-900 font-bold">{prod.stock ?? 0}</strong>
+                          </span>
+                        </div>
+
+                        {/* ACCIONES (col-span-4) - ESPACIO AMPLIO PARA BOTONES */}
+                        <div className="col-span-4 flex items-center justify-end gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setProductoEnEdicion({ ...prod })}
+                            className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap"
+                            title="Editar producto"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-zinc-600" />
+                            <span>Editar</span>
+                          </button>
+
+                          {estaDeshabilitado ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleHabilitarProducto(prod.id)}
+                              className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                              title="Habilitar este producto"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5 text-black" />
+                              <span>Habilitar</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleHabilitarProducto(prod.id)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                              title="Deshabilitar este producto"
+                            >
+                              <Ban className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Deshabilitar</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarProductoClick(prod)}
+                            className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Eliminar producto permanentemente"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* VISTA MÓVIL (< sm) - TARJETA BIEN DISTRIBUIDA */}
+                      <div className="sm:hidden flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${estaDeshabilitado ? 'bg-zinc-400' : 'bg-emerald-500'}`} />
+                            <p className={`font-bold text-sm truncate uppercase ${estaDeshabilitado ? 'line-through text-zinc-400' : 'text-zinc-900'}`}>
+                              {prod.nombre}
+                            </p>
+                          </div>
                           {estaDeshabilitado && (
-                            <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 mt-0.5">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200 uppercase shrink-0">
                               Deshabilitado
                             </span>
                           )}
                         </div>
-                      </div>
 
-                      <div className="col-span-3 text-xs text-zinc-600 flex items-center gap-1.5 mt-1 sm:mt-0">
-                        <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span className="truncate">{prod.proveedorNombre || 'Sin proveedor'}</span>
-                      </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-600 gap-2">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <Store className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                            <span className="truncate uppercase font-medium">{prod.proveedorNombre || 'SIN PROVEEDOR'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-bold text-zinc-900 px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200 uppercase text-[11px]">
+                              {prod.unidad}
+                            </span>
+                            <span className="text-zinc-500 font-mono text-xs">
+                              Stock: <strong className="text-zinc-900 font-bold">{prod.stock ?? 0}</strong>
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="col-span-2 text-xs text-zinc-600 mt-1 sm:mt-0">
-                        <span className="font-semibold text-zinc-900 px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200">
-                          {prod.unidad}
-                        </span>
-                        <span className="ml-2 text-zinc-500 font-mono">
-                          (Stock: {prod.stock ?? 0})
-                        </span>
-                      </div>
-
-                      <div className="col-span-2 flex items-center justify-end gap-1.5 mt-3 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-zinc-100">
-                        <button
-                          type="button"
-                          onClick={() => setProductoEnEdicion({ ...prod })}
-                          className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                          title="Editar producto"
-                        >
-                          <Pencil className="w-3.5 h-3.5 text-zinc-600" />
-                          <span>Editar</span>
-                        </button>
-
-                        {estaDeshabilitado ? (
+                        <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-zinc-100">
                           <button
                             type="button"
-                            onClick={() => toggleHabilitarProducto(prod.id)}
-                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Habilitar este producto para que vuelva a estar disponible"
+                            onClick={() => setProductoEnEdicion({ ...prod })}
+                            className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
                           >
-                            <CheckCircle className="w-3.5 h-3.5 text-black" />
-                            <span>Habilitar</span>
+                            <Pencil className="w-3.5 h-3.5 text-zinc-600" />
+                            <span>Editar</span>
                           </button>
-                        ) : (
+
+                          {estaDeshabilitado ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleHabilitarProducto(prod.id)}
+                              className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5 text-black" />
+                              <span>Habilitar</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleHabilitarProducto(prod.id)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Ban className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Deshabilitar</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
-                            onClick={() => toggleHabilitarProducto(prod.id)}
-                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Deshabilitar este producto para pausarlo temporalmente"
+                            onClick={() => handleEliminarProductoClick(prod)}
+                            className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 rounded-lg cursor-pointer"
                           >
-                            <Ban className="w-3.5 h-3.5 text-rose-500" />
-                            <span>Deshabilitar</span>
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`¿Eliminar definitivamente "${prod.nombre}" del inventario?`)) {
-                              eliminarProducto(prod.id);
-                            }
-                          }}
-                          className="p-1.5 bg-white hover:bg-rose-50 text-zinc-400 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                          title="Eliminar producto permanentemente"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -677,10 +836,10 @@ export default function GestionProductosView() {
               <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="Buscar proveedor por nombre, teléfono o notas..."
+                placeholder="BUSCAR PROVEEDOR POR NOMBRE, TELÉFONO O NOTAS..."
                 value={busquedaProveedores}
-                onChange={(e) => setBusquedaProveedores(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
+                onChange={(e) => setBusquedaProveedores(e.target.value.toUpperCase())}
+                className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium uppercase"
               />
             </div>
           </div>
@@ -849,11 +1008,11 @@ export default function GestionProductosView() {
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej. Harina para pizza, Queso mozzarella, Pepperoni..."
+                      placeholder="EJ. HARINA PARA PIZZA, QUESO MOZZARELLA, PEPPERONI..."
                       value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
+                      onChange={(e) => setNombre(e.target.value.toUpperCase())}
                       required
-                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium"
+                      className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black font-medium uppercase"
                     />
                   </div>
 
@@ -877,25 +1036,34 @@ export default function GestionProductosView() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <input
                             type="text"
-                            placeholder="Nombre proveedor (ej: Colanta, Distripapa)"
+                            placeholder="NOMBRE PROVEEDOR (EJ. ARA, DISTRIPAPA)"
                             value={nombreNuevoProv}
-                            onChange={(e) => setNombreNuevoProv(e.target.value)}
-                            className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900"
+                            onChange={(e) => setNombreNuevoProv(e.target.value.toUpperCase())}
+                            className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900 uppercase"
                           />
                           <input
                             type="text"
-                            placeholder="Teléfono WhatsApp (opcional)"
+                            inputMode="tel"
+                            placeholder="Teléfono WhatsApp (solo números)"
                             value={telefonoNuevoProv}
-                            onChange={(e) => setTelefonoNuevoProv(e.target.value)}
-                            className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900"
+                            onChange={(e) => setTelefonoNuevoProv(e.target.value.replace(/[^0-9+]/g, ''))}
+                            className="px-2.5 py-1.5 bg-white border border-zinc-300 rounded-lg text-xs text-zinc-900 font-mono"
                           />
                         </div>
                         <button
                           type="button"
                           onClick={handleCrearProveedorRapido}
-                          className="px-3 py-1 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                          disabled={guardandoProvRapido}
+                          className="px-3 py-1.5 bg-black hover:bg-zinc-800 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5"
                         >
-                          Guardar Proveedor
+                          {guardandoProvRapido ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                              <span>Guardando...</span>
+                            </>
+                          ) : (
+                            <span>Guardar Proveedor</span>
+                          )}
                         </button>
                       </div>
                     ) : (
@@ -959,9 +1127,17 @@ export default function GestionProductosView() {
                     </button>
                     <button
                       type="submit"
-                      className="px-5 py-2.5 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
+                      disabled={guardandoProducto}
+                      className="px-5 py-2.5 bg-black hover:bg-zinc-800 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer flex items-center gap-2"
                     >
-                      Guardar Producto
+                      {guardandoProducto ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>Guardando producto...</span>
+                        </>
+                      ) : (
+                        <span>Guardar Producto</span>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -1152,23 +1328,24 @@ export default function GestionProductosView() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej. ARA, Distripapa, D1, Colanta..."
+                  placeholder="EJ. ARA, DISTRIPAPA, D1, COLANTA..."
                   value={formProvNombre}
-                  onChange={(e) => setFormProvNombre(e.target.value)}
+                  onChange={(e) => setFormProvNombre(e.target.value.toUpperCase())}
                   required
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium"
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium uppercase"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Teléfono / WhatsApp (Opcional)
+                  Teléfono / WhatsApp (Solo números)
                 </label>
                 <input
                   type="text"
+                  inputMode="tel"
                   placeholder="Ej. +573001234567"
                   value={formProvTelefono}
-                  onChange={(e) => setFormProvTelefono(e.target.value)}
+                  onChange={(e) => setFormProvTelefono(e.target.value.replace(/[^0-9+]/g, ''))}
                   className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-mono"
                 />
               </div>
@@ -1179,10 +1356,10 @@ export default function GestionProductosView() {
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ej. Pedidos antes de las 2 PM, entregan martes y viernes..."
+                  placeholder="EJ. PEDIDOS ANTES DE LAS 2 PM, ENTREGAN MARTES Y VIERNES..."
                   value={formProvNotas}
-                  onChange={(e) => setFormProvNotas(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-black"
+                  onChange={(e) => setFormProvNotas(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-black uppercase"
                 />
               </div>
 
@@ -1196,9 +1373,17 @@ export default function GestionProductosView() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
+                  disabled={guardandoProveedor}
+                  className="px-4 py-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer flex items-center gap-1.5"
                 >
-                  {proveedorEnEdicion ? 'Guardar Cambios' : 'Crear Proveedor'}
+                  {guardandoProveedor ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>{proveedorEnEdicion ? 'Guardando...' : 'Creando...'}</span>
+                    </>
+                  ) : (
+                    <span>{proveedorEnEdicion ? 'Guardar Cambios' : 'Crear Proveedor'}</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -1232,9 +1417,9 @@ export default function GestionProductosView() {
                 <input
                   type="text"
                   value={productoEnEdicion.nombre}
-                  onChange={(e) => setProductoEnEdicion({ ...productoEnEdicion, nombre: e.target.value })}
+                  onChange={(e) => setProductoEnEdicion({ ...productoEnEdicion, nombre: e.target.value.toUpperCase() })}
                   required
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium"
+                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium uppercase"
                 />
               </div>
 
@@ -1296,9 +1481,17 @@ export default function GestionProductosView() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
+                  disabled={guardandoEdicion}
+                  className="px-4 py-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer flex items-center gap-1.5"
                 >
-                  Guardar Cambios
+                  {guardandoEdicion ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <span>Guardar Cambios</span>
+                  )}
                 </button>
               </div>
             </form>
