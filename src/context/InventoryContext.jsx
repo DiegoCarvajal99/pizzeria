@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db, isFirebaseConfigured } from '../firebase';
+import { useAuth } from './AuthContext';
+import { sanitizeNombre, sanitizeUsuario, sanitizeNota, sanitizeText, sanitizePin } from '../utils/security';
 import { 
   collection, 
   onSnapshot, 
@@ -7,29 +9,35 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  getDocs,
   writeBatch,
   serverTimestamp 
 } from 'firebase/firestore';
-import { INITIAL_PROVEEDORES, INITIAL_PRODUCTOS } from '../data/initialData';
+import { 
+  INITIAL_PROVEEDORES, 
+  INITIAL_PRODUCTOS,
+  LIACO_HISTORICO_PROVEEDORES,
+  LIACO_HISTORICO_PRODUCTOS 
+} from '../data/initialData';
 
 const InventoryContext = createContext();
 
-const STORAGE_KEYS = {
-  PRODUCTOS: 'pizzeria_inventario_productos:v2',
-  PROVEEDORES: 'pizzeria_inventario_proveedores:v2',
-  PEDIDOS: 'pizzeria_inventario_pedidos:v2',
-  MOVIMIENTOS: 'pizzeria_inventario_movimientos:v2'
-};
-
 export function InventoryProvider({ children }) {
+  // Conectar con el contexto de autenticación y multi-inquilino (multi-tenant)
+  let authContext = null;
+  try {
+    authContext = useAuth();
+  } catch (e) {
+    // Si se monta antes o fuera de AuthProvider
+  }
+  const negocioId = authContext?.negocioId || 'default_tenant';
+
   const [productos, setProductos] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTOS);
+      const saved = localStorage.getItem(`inv_${negocioId}_productos`);
       if (!saved) return [];
       const parsed = JSON.parse(saved);
-      // Descartar automáticamente datos de prueba iniciales
-      const sonDePrueba = Array.isArray(parsed) && parsed.some(p => p.id === 'prod-1' || p.id === 'prod-2');
-      return sonDePrueba ? [] : parsed;
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -37,11 +45,10 @@ export function InventoryProvider({ children }) {
 
   const [proveedores, setProveedores] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PROVEEDORES);
+      const saved = localStorage.getItem(`inv_${negocioId}_proveedores`);
       if (!saved) return [];
       const parsed = JSON.parse(saved);
-      const sonDePrueba = Array.isArray(parsed) && parsed.some(p => p.id === 'prov-distripapa' || p.id === 'prov-mercado');
-      return sonDePrueba ? [] : parsed;
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -49,7 +56,7 @@ export function InventoryProvider({ children }) {
 
   const [pedidos, setPedidos] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PEDIDOS);
+      const saved = localStorage.getItem(`inv_${negocioId}_pedidos`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -58,16 +65,189 @@ export function InventoryProvider({ children }) {
 
   const [movimientos, setMovimientos] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.MOVIMIENTOS);
+      const saved = localStorage.getItem(`inv_${negocioId}_movimientos`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
   });
 
+  // Empleados encargados de las compras (acceden con su usuario por medio del link sin contraseña)
+  const [empleadosCompras, setEmpleadosCompras] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`inv_${negocioId}_empleados_compras`) || localStorage.getItem('inv_empleados_compras_activo');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Carrito de pedido persistente para que el usuario no pierda su lista al cambiar de pestaña o salir del modal
+  const [carritoPedido, setCarritoPedidoState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`inv_${negocioId}_carrito_pedido`) || localStorage.getItem('inv_carrito_pedido_activo');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [observacionCarrito, setObservacionCarritoState] = useState(() => {
+    try {
+      return localStorage.getItem(`inv_${negocioId}_carrito_obs`) || localStorage.getItem('inv_carrito_obs_activo') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const setCarritoPedido = (updater) => {
+    setCarritoPedidoState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        if (negocioId && negocioId !== 'default_tenant') {
+          localStorage.setItem(`inv_${negocioId}_carrito_pedido`, JSON.stringify(next));
+        }
+        localStorage.setItem('inv_carrito_pedido_activo', JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
+
+  const setObservacionCarrito = (updater) => {
+    setObservacionCarritoState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        if (negocioId && negocioId !== 'default_tenant') {
+          localStorage.setItem(`inv_${negocioId}_carrito_obs`, next);
+        }
+        localStorage.setItem('inv_carrito_obs_activo', next);
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
+
   const [notificacion, setNotificacion] = useState(null);
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [errorFirebase, setErrorFirebase] = useState(null);
+
+  // Al cambiar de negocio activo (o inicio de sesión), recargar caché local del negocio
+  // Preserva y migra automáticamente cualquier dato creado previamente para Liaco Pizzería
+  useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') {
+      return;
+    }
+
+    const esLiaco = authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com';
+
+    // 1. Cargar Productos
+    try {
+      const savedProd = localStorage.getItem(`inv_${negocioId}_productos`);
+      if (savedProd && JSON.parse(savedProd).length > 0) {
+        setProductos(JSON.parse(savedProd));
+      } else if (esLiaco) {
+        const legacyProd = localStorage.getItem('pizzeria_inventario_productos:v2');
+        const parsedLegacy = legacyProd ? JSON.parse(legacyProd) : [];
+        const prodsAUsar = parsedLegacy.length > 0 ? parsedLegacy : LIACO_HISTORICO_PRODUCTOS;
+        setProductos(prodsAUsar);
+        localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(prodsAUsar));
+      } else {
+        setProductos([]);
+      }
+    } catch {
+      setProductos([]);
+    }
+
+    // 2. Cargar Proveedores
+    try {
+      const savedProv = localStorage.getItem(`inv_${negocioId}_proveedores`);
+      if (savedProv && JSON.parse(savedProv).length > 0) {
+        setProveedores(JSON.parse(savedProv));
+      } else if (esLiaco) {
+        const legacyProv = localStorage.getItem('pizzeria_inventario_proveedores:v2');
+        const parsedLegacyProv = legacyProv ? JSON.parse(legacyProv) : [];
+        const provsAUsar = parsedLegacyProv.length > 0 ? parsedLegacyProv : LIACO_HISTORICO_PROVEEDORES;
+        setProveedores(provsAUsar);
+        localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(provsAUsar));
+      } else {
+        setProveedores([]);
+      }
+    } catch {
+      setProveedores([]);
+    }
+
+    // 3. Cargar Pedidos
+    try {
+      const savedPed = localStorage.getItem(`inv_${negocioId}_pedidos`);
+      if (savedPed) {
+        setPedidos(JSON.parse(savedPed));
+      } else if (esLiaco) {
+        const legacyPed = localStorage.getItem('pizzeria_inventario_pedidos:v2');
+        if (legacyPed) {
+          const parsed = JSON.parse(legacyPed);
+          setPedidos(parsed);
+          localStorage.setItem(`inv_${negocioId}_pedidos`, JSON.stringify(parsed));
+        } else {
+          setPedidos([]);
+        }
+      } else {
+        setPedidos([]);
+      }
+    } catch {
+      setPedidos([]);
+    }
+
+    // 4. Cargar Movimientos
+    try {
+      const savedMov = localStorage.getItem(`inv_${negocioId}_movimientos`);
+      if (savedMov) {
+        setMovimientos(JSON.parse(savedMov));
+      } else if (esLiaco) {
+        const legacyMov = localStorage.getItem('pizzeria_inventario_movimientos:v2');
+        if (legacyMov) {
+          const parsed = JSON.parse(legacyMov);
+          setMovimientos(parsed);
+          localStorage.setItem(`inv_${negocioId}_movimientos`, JSON.stringify(parsed));
+        } else {
+          setMovimientos([]);
+        }
+      } else {
+        setMovimientos([]);
+      }
+    } catch {
+      setMovimientos([]);
+    }
+
+    // 5. Cargar Carrito de Pedido en curso (para no perder el avance al salir o cambiar de pestaña)
+    try {
+      const savedCart = localStorage.getItem(`inv_${negocioId}_carrito_pedido`) || localStorage.getItem('inv_carrito_pedido_activo');
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+        if (parsed && Object.keys(parsed).length > 0) {
+          setCarritoPedidoState(parsed);
+        }
+      }
+      const savedObs = localStorage.getItem(`inv_${negocioId}_carrito_obs`) || localStorage.getItem('inv_carrito_obs_activo');
+      if (savedObs) {
+        setObservacionCarritoState(savedObs);
+      }
+    } catch {
+      // Conservar estado en memoria
+    }
+
+    // 6. Cargar Empleados de Compras
+    try {
+      const savedEmp = localStorage.getItem(`inv_${negocioId}_empleados_compras`) || localStorage.getItem('inv_empleados_compras_activo');
+      if (savedEmp) {
+        setEmpleadosCompras(JSON.parse(savedEmp));
+      }
+    } catch {
+      // Conservar estado en memoria
+    }
+  }, [negocioId, authContext?.negocioActivo?.email]);
 
   const mostrarAlerta = (mensaje, tipo = 'success', titulo = '') => {
     setNotificacion({ mensaje, tipo, titulo, id: Date.now() });
@@ -104,44 +284,58 @@ export function InventoryProvider({ children }) {
 
   const cerrarConfirmacion = () => setModalConfirmacion(null);
 
-  // Guardar en localStorage siempre como caché y fallback
+  // Guardar en localStorage siempre como caché y fallback aislado por negocio
   useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') return;
     try {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTOS, JSON.stringify(productos));
+      localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(productos));
     } catch (e) {
       console.error(e);
     }
-  }, [productos]);
+  }, [productos, negocioId]);
 
   useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') return;
     try {
-      localStorage.setItem(STORAGE_KEYS.PROVEEDORES, JSON.stringify(proveedores));
+      localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(proveedores));
     } catch (e) {
       console.error(e);
     }
-  }, [proveedores]);
+  }, [proveedores, negocioId]);
 
   useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') return;
     try {
-      localStorage.setItem(STORAGE_KEYS.PEDIDOS, JSON.stringify(pedidos));
+      localStorage.setItem(`inv_${negocioId}_pedidos`, JSON.stringify(pedidos));
     } catch (e) {
       console.error(e);
     }
-  }, [pedidos]);
+  }, [pedidos, negocioId]);
 
   useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') return;
     try {
-      localStorage.setItem(STORAGE_KEYS.MOVIMIENTOS, JSON.stringify(movimientos));
+      localStorage.setItem(`inv_${negocioId}_movimientos`, JSON.stringify(movimientos));
     } catch (e) {
       console.error(e);
     }
-  }, [movimientos]);
+  }, [movimientos, negocioId]);
+
+  useEffect(() => {
+    if (!negocioId || negocioId === 'default_tenant') return;
+    try {
+      localStorage.setItem(`inv_${negocioId}_empleados_compras`, JSON.stringify(empleadosCompras));
+      localStorage.setItem('inv_empleados_compras_activo', JSON.stringify(empleadosCompras));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [empleadosCompras, negocioId]);
 
   const registrarMovimiento = (tipo, prodNombre, delta, stockPrevio, stockNuevo, referencia = '') => {
     const mov = {
       id: 'mov_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       fecha: new Date().toISOString(),
-      tipo, // 'entrada_pedido' | 'ajuste_manual'
+      tipo, // 'entrada_pedido' | 'ajuste_manual' | 'consumo_cocina'
       prodNombre,
       delta,
       stockPrevio,
@@ -149,14 +343,18 @@ export function InventoryProvider({ children }) {
       referencia
     };
     setMovimientos(prev => [mov, ...prev.slice(0, 99)]); // guardamos los últimos 100
+    // Persistir movimiento en Firestore bajo la subcolección del negocio
+    if (negocioId && negocioId !== 'default_tenant') {
+      syncDoc('movimientos', mov.id, mov);
+    }
   };
 
-  // Si Firebase está configurado, escuchar en tiempo real
+  // Escuchar en tiempo real Firestore para el negocio activo (Multi-Tenant aislado)
   useEffect(() => {
-    if (!isFirebaseConfigured || !db) return;
+    if (!isFirebaseConfigured || !db || !negocioId || negocioId === 'default_tenant') return;
 
     const manejarErrorFirebase = (err, recurso) => {
-      console.warn(`Error escuchando ${recurso} en Firestore:`, err);
+      console.warn(`Error escuchando ${recurso} en Firestore para ${negocioId}:`, err);
       if (err.code === 'permission-denied') {
         setErrorFirebase('permission-denied');
       } else {
@@ -166,44 +364,70 @@ export function InventoryProvider({ children }) {
 
     const unsubs = [];
 
-    // Escuchar productos
-    const unsubProductos = onSnapshot(collection(db, 'productos'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setProductos(list);
+    // Escuchar subcolección de productos del negocio
+    const unsubProductos = onSnapshot(collection(db, 'negocios', negocioId, 'productos'), (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setProductos(list);
+      } else if (authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com') {
+        // Auto-sincronizar los insumos históricos de Liaco a su subcolección en Firestore
+        LIACO_HISTORICO_PRODUCTOS.forEach(p => syncDoc('productos', p.id, p));
+      }
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'productos'));
     unsubs.push(unsubProductos);
 
-    // Escuchar proveedores
-    const unsubProveedores = onSnapshot(collection(db, 'proveedores'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setProveedores(list);
+    // Escuchar subcolección de proveedores del negocio
+    const unsubProveedores = onSnapshot(collection(db, 'negocios', negocioId, 'proveedores'), (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setProveedores(list);
+      } else if (authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com') {
+        // Auto-sincronizar proveedores históricos de Liaco a su subcolección en Firestore
+        LIACO_HISTORICO_PROVEEDORES.forEach(p => syncDoc('proveedores', p.id, p));
+      }
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'proveedores'));
     unsubs.push(unsubProveedores);
 
-    // Escuchar pedidos
-    const unsubPedidos = onSnapshot(collection(db, 'pedidos'), (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
-        setPedidos(list);
-      }
+    // Escuchar subcolección de pedidos del negocio
+    const unsubPedidos = onSnapshot(collection(db, 'negocios', negocioId, 'pedidos'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
+      setPedidos(list);
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'pedidos'));
     unsubs.push(unsubPedidos);
 
-    return () => unsubs.forEach(unsub => unsub && unsub());
-  }, []);
+    // Escuchar subcolección de movimientos del negocio
+    const unsubMovimientos = onSnapshot(collection(db, 'negocios', negocioId, 'movimientos'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
+      setMovimientos(list);
+      setErrorFirebase(null);
+    }, (err) => manejarErrorFirebase(err, 'movimientos'));
+    unsubs.push(unsubMovimientos);
 
-  // Sincronizar un documento con Firebase si está habilitado
+    // Escuchar subcolección de empleados de compras del negocio
+    const unsubEmpleados = onSnapshot(collection(db, 'negocios', negocioId, 'empleados_compras'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
+      setEmpleadosCompras(list);
+      setErrorFirebase(null);
+    }, (err) => manejarErrorFirebase(err, 'empleados_compras'));
+    unsubs.push(unsubEmpleados);
+
+    return () => unsubs.forEach(unsub => unsub && unsub());
+  }, [negocioId]);
+
+  // Sincronizar un documento con la subcolección del negocio en Firestore
   const syncDoc = async (colName, id, data) => {
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await setDoc(doc(db, colName, id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(doc(db, 'negocios', negocioId, colName, id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
         setErrorFirebase(null);
       } catch (err) {
-        console.error(`Error guardando en ${colName}:`, err);
+        console.error(`Error guardando en negocios/${negocioId}/${colName}:`, err);
         if (err.code === 'permission-denied') {
           setErrorFirebase('permission-denied');
           mostrarAlerta('⚠️ Firebase bloqueó el guardado: Debes permitir lectura y escritura en las Reglas de Firebase Console.', 'danger');
@@ -220,9 +444,9 @@ export function InventoryProvider({ children }) {
     const item = { 
       ...nuevo, 
       id, 
-      nombre: String(nuevo.nombre || '').trim().toUpperCase(),
-      unidad: String(nuevo.unidad || 'UNIDAD').trim().toUpperCase(),
-      proveedorNombre: String(nuevo.proveedorNombre || '').trim().toUpperCase(),
+      nombre: sanitizeNombre(nuevo.nombre || '').toUpperCase(),
+      unidad: sanitizeText(nuevo.unidad || 'UNIDAD', 20).toUpperCase(),
+      proveedorNombre: sanitizeNombre(nuevo.proveedorNombre || '').toUpperCase(),
       stock: Number(nuevo.stock) || 0, 
       stockMinimo: Number(nuevo.stockMinimo) || 0 
     };
@@ -257,9 +481,9 @@ export function InventoryProvider({ children }) {
     }
 
     setProductos(prev => prev.map(p => p.id === id ? { ...p, stock: valor } : p));
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await updateDoc(doc(db, 'productos', id), { stock: valor });
+        await updateDoc(doc(db, 'negocios', negocioId, 'productos', id), { stock: valor });
       } catch (e) {
         console.error(e);
       }
@@ -290,9 +514,10 @@ export function InventoryProvider({ children }) {
     setMovimientos(prev => [mov, ...prev.slice(0, 199)]);
     setProductos(prev => prev.map(p => p.id === productoId ? { ...p, stock: nuevoStock } : p));
 
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await updateDoc(doc(db, 'productos', productoId), { stock: nuevoStock });
+        await updateDoc(doc(db, 'negocios', negocioId, 'productos', productoId), { stock: nuevoStock });
+        syncDoc('movimientos', mov.id, mov);
       } catch (e) {
         console.error(e);
       }
@@ -315,9 +540,9 @@ export function InventoryProvider({ children }) {
     const nuevoEstado = !prod.deshabilitado;
     setProductos(prev => prev.map(p => p.id === id ? { ...p, deshabilitado: nuevoEstado } : p));
     
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await updateDoc(doc(db, 'productos', id), { deshabilitado: nuevoEstado });
+        await updateDoc(doc(db, 'negocios', negocioId, 'productos', id), { deshabilitado: nuevoEstado });
       } catch (e) {
         console.error(e);
       }
@@ -331,9 +556,9 @@ export function InventoryProvider({ children }) {
   const eliminarProducto = async (id, opciones = {}) => {
     const prod = productos.find(p => p.id === id);
     setProductos(prev => prev.filter(p => p.id !== id));
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await deleteDoc(doc(db, 'productos', id));
+        await deleteDoc(doc(db, 'negocios', negocioId, 'productos', id));
       } catch (e) {
         console.error(e);
       }
@@ -349,8 +574,8 @@ export function InventoryProvider({ children }) {
     const item = { 
       ...nuevo, 
       id,
-      nombre: String(nuevo.nombre || '').trim().toUpperCase(),
-      notas: String(nuevo.notas || '').trim().toUpperCase()
+      nombre: sanitizeNombre(nuevo.nombre || '').toUpperCase(),
+      notas: sanitizeNota(nuevo.notas || '').toUpperCase()
     };
     setProveedores(prev => [...prev, item]);
     await syncDoc('proveedores', id, item);
@@ -364,8 +589,8 @@ export function InventoryProvider({ children }) {
     const item = { 
       ...datosActualizados, 
       id,
-      nombre: String(datosActualizados.nombre || '').trim().toUpperCase(),
-      notas: String(datosActualizados.notas || '').trim().toUpperCase()
+      nombre: sanitizeNombre(datosActualizados.nombre || '').toUpperCase(),
+      notas: sanitizeNota(datosActualizados.notas || '').toUpperCase()
     };
     setProveedores(prev => prev.map(p => p.id === id ? item : p));
 
@@ -392,9 +617,9 @@ export function InventoryProvider({ children }) {
   const eliminarProveedor = async (id, opciones = {}) => {
     const prov = proveedores.find(p => p.id === id);
     setProveedores(prev => prev.filter(p => p.id !== id));
-    if (isFirebaseConfigured && db) {
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
-        await deleteDoc(doc(db, 'proveedores', id));
+        await deleteDoc(doc(db, 'negocios', negocioId, 'proveedores', id));
       } catch (e) {
         console.error(e);
       }
@@ -434,12 +659,12 @@ export function InventoryProvider({ children }) {
       gruposMap.get(pId).items.push({
         id: item.productoId + '_' + Date.now().toString(36),
         productoId: item.productoId,
-        productoNombre: item.productoNombre,
-        unidad: item.unidad || '',
+        productoNombre: sanitizeNombre(item.productoNombre || ''),
+        unidad: sanitizeText(item.unidad || '', 20),
         cantidadPedida: Number(item.cantidad) || 0,
         cantidadRecibida: 0,
         recibido: false,
-        obs: item.obs || ''
+        obs: sanitizeNota(item.obs || '')
       });
     });
 
@@ -450,7 +675,7 @@ export function InventoryProvider({ children }) {
       numero: Math.floor(1000 + Math.random() * 9000),
       fechaCreacion: fecha,
       estado: 'pendiente', // 'pendiente' | 'completado' | 'cancelado'
-      observaciones: observacionesGenerales,
+      observaciones: sanitizeNota(observacionesGenerales || ''),
       grupos: gruposProveedor,
       totalItems: itemsAPedir.length
     };
@@ -529,15 +754,15 @@ export function InventoryProvider({ children }) {
       });
     });
 
-    // Si Firebase está activo, sincronizar en batch
-    if (isFirebaseConfigured && db) {
+    // Si Firebase está activo, sincronizar en batch bajo la subcolección del negocio
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
       try {
         const batch = writeBatch(db);
         Object.entries(incrementosStock).forEach(([prodId, cantidad]) => {
           const prodActual = productos.find(p => p.id === prodId);
           if (prodActual) {
             const nuevoStock = (prodActual.stock || 0) + cantidad;
-            const ref = doc(db, 'productos', prodId);
+            const ref = doc(db, 'negocios', negocioId, 'productos', prodId);
             batch.update(ref, { stock: nuevoStock });
           }
         });
@@ -611,28 +836,122 @@ export function InventoryProvider({ children }) {
     setPedidos([]);
     setMovimientos([]);
 
-    localStorage.removeItem(STORAGE_KEYS.PRODUCTOS);
-    localStorage.removeItem(STORAGE_KEYS.PROVEEDORES);
-    localStorage.removeItem(STORAGE_KEYS.PEDIDOS);
-    localStorage.removeItem(STORAGE_KEYS.MOVIMIENTOS);
+    if (negocioId && negocioId !== 'default_tenant') {
+      localStorage.removeItem(`inv_${negocioId}_productos`);
+      localStorage.removeItem(`inv_${negocioId}_proveedores`);
+      localStorage.removeItem(`inv_${negocioId}_pedidos`);
+      localStorage.removeItem(`inv_${negocioId}_movimientos`);
+      localStorage.removeItem(`inv_${negocioId}_carrito_pedido`);
+      localStorage.removeItem(`inv_${negocioId}_carrito_obs`);
 
-    if (isFirebaseConfigured && db) {
-      try {
-        const colecciones = ['productos', 'proveedores', 'pedidos', 'movimientos'];
-        for (const col of colecciones) {
-          const snap = await getDocs(collection(db, col));
-          if (!snap.empty) {
-            const batch = writeBatch(db);
-            snap.forEach(d => batch.delete(d.ref));
-            await batch.commit();
+      if (isFirebaseConfigured && db) {
+        try {
+          const colecciones = ['productos', 'proveedores', 'pedidos', 'movimientos'];
+          for (const col of colecciones) {
+            const snap = await getDocs(collection(db, 'negocios', negocioId, col));
+            if (!snap.empty) {
+              const batch = writeBatch(db);
+              snap.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+            }
           }
+        } catch (err) {
+          console.warn('Error vaciando Firestore del negocio:', err);
         }
-      } catch (err) {
-        console.warn('Error vaciando Firestore:', err);
       }
     }
 
-    mostrarAlerta('🧹 ¡Datos de prueba eliminados! Tu pizzería está lista para datos reales.', 'success');
+    mostrarAlerta('🧹 ¡Datos eliminados! El inventario está limpio para nuevos registros.', 'success');
+  };
+
+  const vaciarCarritoPedido = () => {
+    setCarritoPedidoState({});
+    setObservacionCarritoState('');
+    try {
+      if (negocioId && negocioId !== 'default_tenant') {
+        localStorage.removeItem(`inv_${negocioId}_carrito_pedido`);
+        localStorage.removeItem(`inv_${negocioId}_carrito_obs`);
+      }
+      localStorage.removeItem('inv_carrito_pedido_activo');
+      localStorage.removeItem('inv_carrito_obs_activo');
+    } catch (e) {}
+  };
+
+  const agregarEmpleadoCompra = async (nombre, usuario, pin) => {
+    const nombreLimpio = sanitizeNombre(nombre || '').toUpperCase();
+    const usuarioLimpio = sanitizeUsuario(usuario || '');
+    const pinLimpio = sanitizePin(pin || '');
+
+    if (!nombreLimpio || !usuarioLimpio) {
+      throw new Error('Debes ingresar un nombre y usuario válidos (sin caracteres especiales).');
+    }
+
+    if (!pinLimpio || pinLimpio.length !== 4) {
+      throw new Error('El PIN de seguridad es obligatorio y debe tener exactamente 4 dígitos numéricos.');
+    }
+
+    const existe = empleadosCompras.some(
+      e => String(e.usuario || '').toUpperCase() === usuarioLimpio
+    );
+    if (existe) {
+      throw new Error(`El usuario "${usuarioLimpio}" ya está asignado a otro empleado.`);
+    }
+
+    const id = 'emp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const nuevoEmpleado = {
+      id,
+      nombre: nombreLimpio,
+      usuario: usuarioLimpio,
+      pin: pinLimpio, // PIN de 4 dígitos numéricos para acceso seguro
+      fechaCreacion: new Date().toISOString()
+    };
+
+    setEmpleadosCompras(prev => [nuevoEmpleado, ...prev]);
+    await syncDoc('empleados_compras', id, nuevoEmpleado);
+    return nuevoEmpleado;
+  };
+
+  const eliminarEmpleadoCompra = async (id) => {
+    setEmpleadosCompras(prev => prev.filter(e => e.id !== id));
+    if (isFirebaseConfigured && db && negocioId && negocioId !== 'default_tenant') {
+      try {
+        await deleteDoc(doc(db, 'negocios', negocioId, 'empleados_compras', id));
+      } catch (e) {
+        console.error('Error eliminando empleado en Firestore:', e);
+      }
+    }
+  };
+
+  const actualizarEmpleadoCompra = async (id, { nombre, usuario, pin }) => {
+    const nombreLimpio = sanitizeNombre(nombre || '').toUpperCase();
+    const usuarioLimpio = sanitizeUsuario(usuario || '');
+    const pinLimpio = sanitizePin(pin || '');
+
+    if (!nombreLimpio || !usuarioLimpio) {
+      throw new Error('Debes ingresar un nombre y usuario válidos (sin caracteres especiales).');
+    }
+
+    if (!pinLimpio || pinLimpio.length !== 4) {
+      throw new Error('El PIN de seguridad es obligatorio y debe tener exactamente 4 dígitos numéricos.');
+    }
+
+    const existe = empleadosCompras.some(
+      e => e.id !== id && String(e.usuario || '').toUpperCase() === usuarioLimpio
+    );
+    if (existe) {
+      throw new Error(`El usuario "${usuarioLimpio}" ya está asignado a otro empleado.`);
+    }
+
+    const datosActualizados = {
+      nombre: nombreLimpio,
+      usuario: usuarioLimpio,
+      pin: pinLimpio,
+      fechaActualizacion: new Date().toISOString()
+    };
+
+    setEmpleadosCompras(prev => prev.map(e => (e.id === id ? { ...e, ...datosActualizados } : e)));
+    await syncDoc('empleados_compras', id, datosActualizados);
+    return datosActualizados;
   };
 
   return (
@@ -641,6 +960,15 @@ export function InventoryProvider({ children }) {
       proveedores,
       pedidos,
       movimientos,
+      empleadosCompras,
+      agregarEmpleadoCompra,
+      actualizarEmpleadoCompra,
+      eliminarEmpleadoCompra,
+      carritoPedido,
+      setCarritoPedido,
+      observacionCarrito,
+      setObservacionCarrito,
+      vaciarCarritoPedido,
       notificacion,
       modalConfirmacion,
       errorFirebase,

@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { useAuth } from '../context/AuthContext';
 import SearchableSelect from './common/SearchableSelect';
 import NumericInput from './common/NumericInput';
+import AnimatedModal from './common/AnimatedModal';
+import { sanitizeNota } from '../utils/security';
 import { 
   ShoppingCart, 
   Plus, 
@@ -27,10 +30,25 @@ import {
 } from 'lucide-react';
 
 export default function PedidosView() {
+  let authContext = null;
+  try {
+    authContext = useAuth();
+  } catch (e) {}
+  const negocioActivo = authContext?.negocioActivo;
+  const negocioId = authContext?.negocioId || negocioActivo?.id || negocioActivo?.uid || 'default_tenant';
+  const emojiNegocio = negocioActivo?.emoji || '🍕';
+  const nombreNegocioHeader = (negocioActivo?.nombreNegocio || 'PEDIDO SEMANAL').toUpperCase();
+  const linkPortalCompras = `https://pizzeria-kappa-gold.vercel.app/?compras=${encodeURIComponent(negocioId)}`;
+
   const { 
     productos, 
     proveedores, 
     pedidos, 
+    carritoPedido,
+    setCarritoPedido,
+    observacionCarrito,
+    setObservacionCarrito,
+    vaciarCarritoPedido,
     crearPedido, 
     confirmarRecepcionItems, 
     confirmarItemIndividual, 
@@ -45,14 +63,46 @@ export default function PedidosView() {
   const [busquedaPedidoId, setBusquedaPedidoId] = useState(''); // Barra de búsqueda por ID de pedido
 
   // ==========================================
-  // ESTADOS DEL POPUP / MODAL "NUEVO PEDIDO"
+  // ESTADOS DEL POPUP / MODAL "NUEVO PEDIDO / EDITAR CARRITO"
   // ==========================================
   const [modalNuevoPedidoAbierto, setModalNuevoPedidoAbierto] = useState(false);
-  const [pedidoDraft, setPedidoDraft] = useState({});
+  const [pedidoDraft, setPedidoDraft] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_borrador_formulario_pedido');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [observacionGeneral, setObservacionGeneral] = useState(() => {
+    try {
+      return localStorage.getItem('inv_borrador_formulario_obs') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [modalConfirmarSalida, setModalConfirmarSalida] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('todos');
-  const [observacionGeneral, setObservacionGeneral] = useState('');
   const [enviando, setEnviando] = useState(false);
+
+  const actualizarDraftFormulario = (updater) => {
+    setPedidoDraft(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        localStorage.setItem('inv_borrador_formulario_pedido', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const actualizarObsFormulario = (val) => {
+    const valLimpio = sanitizeNota(val, 250);
+    setObservacionGeneral(valLimpio);
+    try {
+      localStorage.setItem('inv_borrador_formulario_obs', valLimpio);
+    } catch (e) {}
+  };
 
   // Sub-modal para especificar cantidad y nota de un insumo
   const [productoModal, setProductoModal] = useState(null);
@@ -137,7 +187,7 @@ export default function PedidosView() {
     const cuerpoProveedores = bloquesProveedores.join('\n\n');
 
     const lineasMensaje = [
-      '🍕 PEDIDO SEMANAL 🍕',
+      `${emojiNegocio} PEDIDO - ${nombreNegocioHeader} ${emojiNegocio}`,
       '',
       `🔢 Pedido N.º: ${idPedidoStr}`,
       `📅 Fecha: ${fechaStr}`,
@@ -152,6 +202,8 @@ export default function PedidosView() {
     if (pedido.observaciones && pedido.observaciones.trim()) {
       lineasMensaje.push('', `📝 Observaciones: ${pedido.observaciones.trim()}`);
     }
+
+    lineasMensaje.push('', `🔗 Ver lista en el portal de compras:`, linkPortalCompras);
 
     return lineasMensaje.join('\n');
   };
@@ -169,7 +221,7 @@ export default function PedidosView() {
     });
 
     const lineasMensaje = [
-      '🍕 PEDIDO SEMANAL 🍕',
+      `${emojiNegocio} PEDIDO - ${nombreNegocioHeader} ${emojiNegocio}`,
       ''
     ];
 
@@ -184,6 +236,7 @@ export default function PedidosView() {
     lineasMensaje.push('━━━━━━━━━━━━━━');
     lineasMensaje.push('');
     lineasMensaje.push(`✅ Total de productos: ${grupo.items ? grupo.items.length : 0}`);
+    lineasMensaje.push('', `🔗 Ver lista en el portal de compras:`, linkPortalCompras);
 
     return lineasMensaje.join('\n');
   };
@@ -225,13 +278,9 @@ export default function PedidosView() {
       });
     });
 
-    setPedidoDraft(draftRepetido);
-    setObservacionGeneral(pedidoOriginal.observaciones || '');
+    actualizarDraftFormulario(draftRepetido);
+    actualizarObsFormulario(pedidoOriginal.observaciones || '');
     setModalNuevoPedidoAbierto(true);
-
-    if (mostrarAlerta) {
-      mostrarAlerta(`Se cargaron los productos del Pedido #${pedidoOriginal.numero} para reordenar`, 'info');
-    }
   };
 
   // ==========================================
@@ -268,17 +317,13 @@ export default function PedidosView() {
       return;
     }
 
-    setPedidoDraft(prev => ({
+    actualizarDraftFormulario(prev => ({
       ...prev,
       [productoModal.id]: {
         cantidad: cant,
         obs: notaModal.trim()
       }
     }));
-
-    if (mostrarAlerta) {
-      mostrarAlerta(`"${productoModal.nombre}" agregado al pedido (${cant} ${productoModal.unidad})`, 'success');
-    }
 
     setProductoModal(null);
   };
@@ -300,35 +345,37 @@ export default function PedidosView() {
       return;
     }
 
-    setPedidoDraft(prev => ({ ...prev, ...faltantes }));
-    if (mostrarAlerta) {
-      mostrarAlerta(`Se agregaron los productos con stock bajo al pedido`, 'info');
-    }
+    actualizarDraftFormulario(prev => ({ ...prev, ...faltantes }));
   };
 
   const handleEliminarDelDraft = (prodId) => {
-    setPedidoDraft(prev => {
+    actualizarDraftFormulario(prev => {
       const copia = { ...prev };
       delete copia[prodId];
       return copia;
     });
   };
 
-  const itemsEnPedido = Object.entries(pedidoDraft)
-    .filter(([_, data]) => Number(data.cantidad) > 0)
-    .map(([prodId, data]) => {
-      const prod = productos.find(p => p.id === prodId) || {};
-      return {
-        productoId: prodId,
-        productoNombre: prod.nombre || 'Producto',
-        unidad: prod.unidad || '',
-        cantidad: Number(data.cantidad),
-        proveedorId: prod.proveedorId || '',
-        proveedorNombre: prod.proveedorNombre || 'Sin Proveedor',
-        obs: data.obs || ''
-      };
-    });
+  // Helper para mapear un objeto { prodId: { cantidad, obs } } a lista enriquecida
+  const mapearItemsPedido = (mapaOrigen) => {
+    return Object.entries(mapaOrigen || {})
+      .filter(([_, data]) => Number(data?.cantidad) > 0)
+      .map(([prodId, data]) => {
+        const prod = productos.find(p => p.id === prodId) || {};
+        return {
+          productoId: prodId,
+          productoNombre: prod.nombre || 'Producto',
+          unidad: prod.unidad || '',
+          cantidad: Number(data.cantidad),
+          proveedorId: prod.proveedorId || '',
+          proveedorNombre: prod.proveedorNombre || 'Sin Proveedor',
+          obs: data.obs || ''
+        };
+      });
+  };
 
+  // 1. Productos en el formulario actual (borrador temporal mientras edita)
+  const itemsEnPedido = mapearItemsPedido(pedidoDraft);
   const itemsAgrupadosPorProveedor = itemsEnPedido.reduce((acc, item) => {
     const prov = item.proveedorNombre || 'Varios';
     if (!acc[prov]) acc[prov] = [];
@@ -336,14 +383,94 @@ export default function PedidosView() {
     return acc;
   }, {});
 
-  const handleFinalizarPedido = async () => {
-    if (itemsEnPedido.length === 0) return;
+  // 2. Productos que YA fueron enviados oficialmente al Carrito (los únicos que se ven en la página principal de Pedidos)
+  const itemsEnCarrito = mapearItemsPedido(carritoPedido);
+  const itemsCarritoPorProveedor = itemsEnCarrito.reduce((acc, item) => {
+    const prov = item.proveedorNombre || 'Varios';
+    if (!acc[prov]) acc[prov] = [];
+    acc[prov].push(item);
+    return acc;
+  }, {});
+
+  const tieneCarritoActivo = itemsEnCarrito.length > 0;
+
+  // Comparar si el formulario tiene cambios sin guardar respecto al carrito oficial
+  const serializarMapa = (mapa) => {
+    const entradas = Object.entries(mapa || {})
+      .filter(([_, v]) => Number(v?.cantidad) > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => [k, { cantidad: Number(v.cantidad), obs: (v.obs || '').trim() }]);
+    return JSON.stringify(entradas);
+  };
+
+  const hayCambiosEnFormulario =
+    serializarMapa(pedidoDraft) !== serializarMapa(carritoPedido) ||
+    (observacionGeneral || '').trim() !== (observacionCarrito || '').trim();
+
+  // Abrir formulario desde "+ Nuevo Pedido" (solo cuando no hay carrito activo)
+  const handleAbrirNuevoPedido = () => {
+    if (tieneCarritoActivo) return;
+    setModalNuevoPedidoAbierto(true);
+  };
+
+  // Abrir formulario desde "Carrito (X)" (solo cuando ya hay productos en el carrito)
+  const handleAbrirEditarCarrito = () => {
+    if (!tieneCarritoActivo) return;
+    actualizarDraftFormulario({ ...(carritoPedido || {}) });
+    actualizarObsFormulario(observacionCarrito || '');
+    setModalNuevoPedidoAbierto(true);
+  };
+
+  // Enviar o Actualizar el carrito oficial con lo que está en el formulario
+  const handleEnviarAlCarrito = () => {
+    setCarritoPedido({ ...pedidoDraft });
+    setObservacionCarrito(observacionGeneral);
+    setModalConfirmarSalida(false);
+    setModalNuevoPedidoAbierto(false);
+  };
+
+  // Intentar cerrar con "Cancelar" o la "X" del formulario
+  const handleIntentarCerrarFormulario = () => {
+    if (hayCambiosEnFormulario) {
+      setModalConfirmarSalida(true);
+    } else {
+      setModalNuevoPedidoAbierto(false);
+    }
+  };
+
+  // Descartar los cambios hechos en el formulario al confirmar en el modal de salida
+  const handleDescartarCambiosFormulario = () => {
+    if (tieneCarritoActivo) {
+      // Restaurar el borrador del formulario a como estaba el carrito antes de editarlo
+      actualizarDraftFormulario({ ...(carritoPedido || {}) });
+      actualizarObsFormulario(observacionCarrito || '');
+    } else {
+      // Si era una lista nueva sin carrito, limpiar todo sin guardar nada en el carrito
+      actualizarDraftFormulario({});
+      actualizarObsFormulario('');
+    }
+    setModalConfirmarSalida(false);
+    setModalNuevoPedidoAbierto(false);
+  };
+
+  const handleFinalizarPedido = async (usarDatosDeCarrito = false) => {
+    const listaFinal = usarDatosDeCarrito ? itemsEnCarrito : itemsEnPedido;
+    const obsFinal = usarDatosDeCarrito ? observacionCarrito : observacionGeneral;
+    if (listaFinal.length === 0) return;
+
     setEnviando(true);
     try {
-      const pedidoCreado = await crearPedido(itemsEnPedido, observacionGeneral);
+      const pedidoCreado = await crearPedido(listaFinal, obsFinal);
       if (pedidoCreado) {
-        setPedidoDraft({});
-        setObservacionGeneral('');
+        if (vaciarCarritoPedido) {
+          vaciarCarritoPedido();
+        } else {
+          setCarritoPedido({});
+          setObservacionCarrito('');
+        }
+        actualizarDraftFormulario({});
+        actualizarObsFormulario('');
+        setModalConfirmarSalida(false);
         setModalNuevoPedidoAbierto(false);
         setFiltroEstado('pendientes');
         if (mostrarAlerta) {
@@ -357,7 +484,7 @@ export default function PedidosView() {
 
   return (
     <div className="space-y-6 pb-20">
-      {/* 1. Cabecera Unificada con Botón "Nuevo Pedido" */}
+      {/* 1. Cabecera Unificada con Botón "Carrito" y "Nuevo Pedido" */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-zinc-900 font-display flex items-center gap-2">
@@ -365,22 +492,153 @@ export default function PedidosView() {
             <span>Gestión de Pedidos & Recepción</span>
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Crea pedidos a proveedores, comparte por WhatsApp y confirma la llegada sumando directo al stock.
+            Crea pedidos a proveedores, guarda tu avance en el carrito y confirma la llegada sumando directo al stock.
           </p>
         </div>
 
-        {/* BOTÓN REQUERIDO: "Nuevo Pedido" (Abre el popup modal) */}
-        <button
-          type="button"
-          onClick={() => {
-            setModalNuevoPedidoAbierto(true);
-          }}
-          className="px-4 py-2.5 bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nuevo Pedido</span>
-        </button>
+        {/* BOTONES DE ACCIÓN:
+            - Carrito: deshabilitado si no hay nada en el carrito (no hace nada al dar clic)
+            - Nuevo Pedido: deshabilitado si ya hay una lista activa en el carrito (no hace nada al dar clic)
+        */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={!tieneCarritoActivo}
+            onClick={handleAbrirEditarCarrito}
+            className={`px-4 py-2.5 rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition-all ${
+              tieneCarritoActivo
+                ? 'bg-amber-400 hover:bg-amber-300 active:scale-95 text-black font-extrabold ring-2 ring-amber-500/40 cursor-pointer'
+                : 'bg-zinc-100 text-zinc-400 border border-zinc-200 font-bold opacity-50 cursor-not-allowed pointer-events-none'
+            }`}
+            title={tieneCarritoActivo ? 'Abrir el carrito de pedido para editar o finalizar' : 'El carrito está vacío'}
+          >
+            <div className="relative flex items-center justify-center">
+              <ShoppingCart className="w-4 h-4" />
+              {itemsEnCarrito.length > 0 && (
+                <span className="absolute -top-2 -right-2.5 px-1 min-w-[16px] h-[16px] flex items-center justify-center text-[9px] font-black rounded-full bg-black text-amber-300 ring-1 ring-amber-400">
+                  {itemsEnCarrito.length}
+                </span>
+              )}
+            </div>
+            <span>Carrito ({itemsEnCarrito.length})</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={tieneCarritoActivo}
+            onClick={handleAbrirNuevoPedido}
+            className={`px-4 py-2.5 rounded-xl text-sm shadow-sm flex items-center justify-center gap-2 transition-all shrink-0 ${
+              !tieneCarritoActivo
+                ? 'bg-black hover:bg-zinc-800 active:scale-95 text-white font-bold cursor-pointer'
+                : 'bg-zinc-200 text-zinc-400 font-bold opacity-50 cursor-not-allowed pointer-events-none'
+            }`}
+            title={tieneCarritoActivo ? 'Ya tienes una lista activa en el Carrito' : 'Iniciar una nueva lista de pedido'}
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Pedido</span>
+          </button>
+        </div>
       </div>
+
+      {/* 1.B TARJETA DE CARRITO EN CURSO: Aparece SOLO cuando los productos ya fueron enviados al Carrito */}
+      {tieneCarritoActivo && (
+        <div className="bg-zinc-950 text-white rounded-2xl border border-zinc-800 p-4 sm:p-5 shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3.5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-400 text-black flex items-center justify-center font-extrabold shrink-0 shadow-md">
+                <ShoppingCart className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-extrabold text-sm sm:text-base font-display text-white">
+                    Carrito de Pedido en Curso ({itemsEnCarrito.length} {itemsEnCarrito.length === 1 ? 'producto' : 'productos'})
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    En el Carrito
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Estos productos ya están en tu carrito. Puedes editar la lista o finalizar el pedido cuando estés listo.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAbrirEditarCarrito}
+                className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl text-xs border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5 text-amber-400" />
+                <span>Editar / Agregar Más</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  solicitarConfirmacion({
+                    titulo: '¿Vaciar el carrito?',
+                    mensaje: '¿Estás seguro de que deseas eliminar todos los productos guardados en el carrito?',
+                    textoConfirmar: 'Sí, vaciar carrito',
+                    textoCancelar: 'Conservar carrito',
+                    tipo: 'danger',
+                    onConfirmar: () => {
+                      if (vaciarCarritoPedido) vaciarCarritoPedido();
+                      else {
+                        setCarritoPedido({});
+                        setObservacionCarrito('');
+                      }
+                      actualizarDraftFormulario({});
+                      actualizarObsFormulario('');
+                    }
+                  });
+                }}
+                className="px-3 py-2 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-zinc-800 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Vaciar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFinalizarPedido(true)}
+                disabled={enviando}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold rounded-xl text-xs shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{enviando ? 'Creando...' : 'Finalizar y Crear Pedido'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Resumen rápido de los ítems en el carrito por proveedor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            {Object.entries(itemsCarritoPorProveedor).map(([provNombre, items]) => (
+              <div key={provNombre} className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-400 border-b border-zinc-800 pb-1.5">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Store className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{provNombre}</span>
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    {items.length} {items.length === 1 ? 'ítem' : 'ítems'}
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                  {items.map(it => (
+                    <div key={it.productoId} className="flex items-center justify-between text-xs text-zinc-200 gap-2">
+                      <span className="truncate">{it.productoNombre}</span>
+                      <span className="font-mono font-bold text-white bg-zinc-800 px-1.5 py-0.5 rounded text-[11px] shrink-0">
+                        {it.cantidad} {it.unidad}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. Filtros de Estado y Barra de Búsqueda por ID */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
@@ -684,6 +942,15 @@ export default function PedidosView() {
                                   <h4 className="font-bold text-zinc-900 text-sm truncate">
                                     {item.productoNombre}
                                   </h4>
+                                  {item.comprado && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>Comprado por {item.compradoPor || 'Empleado'}</span>
+                                      {item.compradoPorUsuario && (
+                                        <span className="font-mono text-emerald-900">(@{item.compradoPorUsuario})</span>
+                                      )}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-1 text-xs">
                                   <span className="text-zinc-500 font-medium">
@@ -751,10 +1018,11 @@ export default function PedidosView() {
       {/* ========================================================================= */}
       {/* 4. MODAL POPUP: FORMULARIO "NUEVO PEDIDO" (HACER PEDIDO EN POPUP)        */}
       {/* ========================================================================= */}
-      {modalNuevoPedidoAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-zinc-200 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 my-auto max-h-[92vh] flex flex-col">
-            
+      <AnimatedModal
+        isOpen={modalNuevoPedidoAbierto}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+        panelClassName="bg-white border border-zinc-200 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
+      >
             {/* Cabecera del popup */}
             <div className="p-4 sm:p-5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
@@ -763,17 +1031,18 @@ export default function PedidosView() {
                 </div>
                 <div>
                   <h3 className="font-bold text-zinc-900 text-base font-display">
-                    Crear Nuevo Pedido
+                    {tieneCarritoActivo ? 'Editar Carrito de Pedido' : 'Crear Nuevo Pedido'}
                   </h3>
                   <p className="text-xs text-zinc-500">
-                    Selecciona productos, ajusta cantidades y confirma tu orden.
+                    Selecciona productos, ajusta cantidades y envíalos al carrito o confirma tu orden.
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setModalNuevoPedidoAbierto(false)}
+                onClick={handleIntentarCerrarFormulario}
                 className="p-1.5 text-zinc-400 hover:text-black hover:bg-zinc-200 rounded-xl cursor-pointer transition-colors"
+                title="Cancelar y cerrar"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -904,17 +1173,19 @@ export default function PedidosView() {
                 </div>
               </div>
 
-              {/* Sección "Productos en tu pedido" */}
+              {/* Sección "Productos en tu lista" */}
               <div className="space-y-3 pt-2 border-t border-zinc-200">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-zinc-900 font-display flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-black" />
-                    <span>Productos en tu pedido ({itemsEnPedido.length})</span>
+                    <span>Productos en tu Lista ({itemsEnPedido.length})</span>
                   </h4>
                   {itemsEnPedido.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setPedidoDraft({})}
+                      onClick={() => {
+                        actualizarDraftFormulario({});
+                      }}
                       className="text-xs text-rose-600 hover:text-rose-700 font-semibold cursor-pointer"
                     >
                       Vaciar lista
@@ -925,7 +1196,7 @@ export default function PedidosView() {
                 {itemsEnPedido.length === 0 ? (
                   <div className="text-center py-6 px-4 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
                     <p className="text-xs text-zinc-500">
-                      Selecciona productos arriba haciendo clic en <strong>"Pedir"</strong> para añadirlos a este pedido.
+                      Selecciona productos arriba haciendo clic en <strong>"Pedir"</strong> para añadirlos a esta lista.
                     </p>
                   </div>
                 ) : (
@@ -997,7 +1268,7 @@ export default function PedidosView() {
                         type="text"
                         placeholder="EJ. ENTREGAR ANTES DE LAS 11:00 AM / TRAER FACTURA"
                         value={observacionGeneral}
-                        onChange={(e) => setObservacionGeneral(e.target.value.toUpperCase())}
+                        onChange={(e) => actualizarObsFormulario(e.target.value.toUpperCase())}
                         className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                       />
                     </div>
@@ -1007,40 +1278,114 @@ export default function PedidosView() {
             </div>
 
             {/* Pie del popup */}
-            <div className="p-4 sm:p-5 bg-zinc-50 border-t border-zinc-200 flex items-center justify-between gap-3 shrink-0">
+            <div className="p-4 sm:p-5 bg-zinc-50 border-t border-zinc-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
-                onClick={() => setModalNuevoPedidoAbierto(false)}
+                onClick={handleIntentarCerrarFormulario}
                 className="px-4 py-2 bg-white hover:bg-zinc-100 border border-zinc-300 text-zinc-700 font-semibold rounded-xl text-xs cursor-pointer"
               >
                 Cancelar
               </button>
 
-              <button
-                type="button"
-                onClick={handleFinalizarPedido}
-                disabled={enviando || itemsEnPedido.length === 0}
-                className="px-5 py-2.5 bg-black hover:bg-zinc-800 active:scale-95 disabled:opacity-40 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all"
-              >
-                <Send className="w-4 h-4" />
-                <span>{enviando ? 'Guardando pedido...' : 'Finalizar y Crear Pedido'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleEnviarAlCarrito}
+                  disabled={tieneCarritoActivo ? !hayCambiosEnFormulario : itemsEnPedido.length === 0}
+                  className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-black font-extrabold rounded-xl text-xs shadow-sm flex items-center gap-2 cursor-pointer transition-all"
+                  title={tieneCarritoActivo ? 'Guardar los cambios realizados en el carrito' : 'Enviar la lista actual al carrito'}
+                >
+                  <ShoppingCart className="w-4 h-4 text-black" />
+                  <span>
+                    {tieneCarritoActivo
+                      ? `Actualizar Carrito (${itemsEnPedido.length})`
+                      : `Enviar al Carrito (${itemsEnPedido.length})`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleFinalizarPedido(false)}
+                  disabled={enviando || itemsEnPedido.length === 0}
+                  className="px-5 py-2.5 bg-black hover:bg-zinc-800 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>{enviando ? 'Guardando pedido...' : 'Finalizar y Crear Pedido'}</span>
+                </button>
+              </div>
             </div>
-          </div>
+      </AnimatedModal>
+
+      {/* ========================================================================= */}
+      {/* 4.B MODAL DE CONFIRMACIÓN AL CANCELAR O CERRAR CON CAMBIOS SIN GUARDAR    */}
+      {/* ========================================================================= */}
+      <AnimatedModal
+        isOpen={modalConfirmarSalida}
+        onBackdropClick={() => setModalConfirmarSalida(false)}
+        overlayClassName="fixed inset-0 z-[70] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-6 space-y-4 text-center relative"
+      >
+        <button
+          type="button"
+          onClick={() => setModalConfirmarSalida(false)}
+          className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-black hover:bg-zinc-100 rounded-full cursor-pointer transition-colors"
+          title="Seguir editando"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+          <AlertTriangle className="w-7 h-7" />
         </div>
-      )}
+
+        <div className="space-y-1.5">
+          <h3 className="text-base sm:text-lg font-bold text-zinc-900 font-display">
+            {tieneCarritoActivo ? '¿Descartar cambios sin guardar?' : '¿Descartar la lista creada?'}
+          </h3>
+          <p className="text-xs text-zinc-600 leading-relaxed">
+            {tieneCarritoActivo
+              ? 'Has realizado modificaciones respecto al carrito actual. ¿Deseas descartar estos cambios o actualizar el carrito con tus modificaciones?'
+              : `Tienes ${itemsEnPedido.length} ${itemsEnPedido.length === 1 ? 'producto seleccionado' : 'productos seleccionados'} en la lista. ¿Deseas descartar la lista creada o agregarla al carrito?`}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2">
+          <button
+            type="button"
+            onClick={handleDescartarCambiosFormulario}
+            className="w-full sm:flex-1 py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+          >
+            {tieneCarritoActivo ? 'Sí, descartar cambios' : 'Sí, descartar lista'}
+          </button>
+
+          {itemsEnPedido.length > 0 && (
+            <button
+              type="button"
+              onClick={handleEnviarAlCarrito}
+              className="w-full sm:flex-1 py-2.5 px-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold rounded-xl text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <ShoppingCart className="w-3.5 h-3.5 text-black" />
+              <span>{tieneCarritoActivo ? 'Actualizar Carrito' : 'Agregar al Carrito'}</span>
+            </button>
+          )}
+        </div>
+      </AnimatedModal>
 
       {/* ========================================================================= */}
       {/* 5. SUB-MODAL: AJUSTE DE CANTIDAD Y NOTA AL DAR CLIC EN "PEDIR"           */}
       {/* ========================================================================= */}
-      {productoModal && (
-        <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-2xl max-w-sm w-full shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95">
+      <AnimatedModal
+        isOpen={productoModal}
+        overlayClassName="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white border border-zinc-200 rounded-2xl max-w-sm w-full shadow-2xl p-5 space-y-4"
+      >
+        {(prodSel) => (
+          <>
             <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
               <div className="flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4 text-black" />
+                <Package className="w-4 h-4 text-black" />
                 <h4 className="font-bold text-zinc-900 text-sm font-display">
-                  Agregar a Pedido
+                  Agregar Producto a la Lista
                 </h4>
               </div>
               <button
@@ -1055,9 +1400,9 @@ export default function PedidosView() {
             <form onSubmit={handleGuardarDesdeModal} className="space-y-3.5">
               <div>
                 <span className="block text-xs font-bold text-zinc-500 mb-1">Producto</span>
-                <p className="font-bold text-zinc-900 text-base">{productoModal.nombre}</p>
+                <p className="font-bold text-zinc-900 text-base">{prodSel.nombre}</p>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Disponible actual: <span className="font-semibold text-black">{productoModal.stock ?? 0} {productoModal.unidad}</span>
+                  Disponible actual: <span className="font-semibold text-black">{prodSel.stock ?? 0} {prodSel.unidad}</span>
                 </p>
               </div>
 
@@ -1075,7 +1420,7 @@ export default function PedidosView() {
                     required
                   />
                   <span className="px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 shrink-0">
-                    {productoModal.unidad}
+                    {prodSel.unidad}
                   </span>
                 </div>
               </div>
@@ -1088,7 +1433,7 @@ export default function PedidosView() {
                   type="text"
                   placeholder="EJ. MADURO, MARCA ESPECÍFICA..."
                   value={notaModal}
-                  onChange={(e) => setNotaModal(e.target.value.toUpperCase())}
+                  onChange={(e) => setNotaModal(sanitizeNota(e.target.value, 150).toUpperCase())}
                   className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-black uppercase"
                 />
               </div>
@@ -1103,15 +1448,16 @@ export default function PedidosView() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
+                  className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
                 >
-                  Agregar
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Agregar a la Lista</span>
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AnimatedModal>
     </div>
   );
 }

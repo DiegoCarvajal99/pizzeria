@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { useAuth } from '../context/AuthContext';
 import { 
   Info,
   CheckCircle2, 
@@ -18,6 +19,45 @@ import {
 } from 'lucide-react';
 
 export default function HomeView({ setActiveTab }) {
+  let authContext = null;
+  try {
+    authContext = useAuth();
+  } catch (e) {}
+  const negocioActivo = authContext?.negocioActivo;
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [negocioActivo?.id, negocioActivo?.bannerUrl, negocioActivo?.logoUrl]);
+
+  const nombreNegocioRaw = negocioActivo?.nombreNegocio || 'MI NEGOCIO';
+  // Limpiar cualquier emoji residual para asegurar que solo aparezca el texto
+  const nombreNegocio = nombreNegocioRaw
+    .replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+    .trim();
+
+  // Saludo dinámico según la hora del día
+  const obtenerSaludo = () => {
+    const hora = new Date().getHours();
+    if (hora >= 5 && hora < 12) return 'Buenos días';
+    if (hora >= 12 && hora < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+  const saludo = obtenerSaludo();
+
+  const nombreAreaConsumo = negocioActivo?.nombreAreaConsumo || 'Consumo Cocina';
+  const esLiaco = negocioActivo?.email?.toLowerCase() === 'liacopizzeria@yopmail.com';
+  const esAssetLiaco = (url) => {
+    if (!url) return false;
+    const u = String(url).toLowerCase().trim();
+    return u === '/logo.png' || u === '/hero-banner.png' || u === '/logo-liaco.png' || u === '/logo.jpg';
+  };
+  const rawBannerCandidate = (negocioActivo?.bannerUrl || negocioActivo?.bannerLogoUrl || negocioActivo?.logoUrl || '').trim();
+  const rawBanner = (!esLiaco && esAssetLiaco(rawBannerCandidate))
+    ? ''
+    : (rawBannerCandidate || (esLiaco ? '/hero-banner.png' : ''));
+  const bannerUrl = (!imgError && rawBanner) ? rawBanner : '';
+
   const { productos, proveedores, pedidos } = useInventory();
 
   const productosActivos = productos.filter(p => !p.deshabilitado);
@@ -32,7 +72,7 @@ export default function HomeView({ setActiveTab }) {
     },
     {
       id: 'stock',
-      titulo: '2. Consumo Cocina & Bitácora',
+      titulo: `2. ${nombreAreaConsumo} & Bitácora`,
       descripcion: 'Digita y descuenta en tiempo real los insumos que tomas para la preparación, con alertas si excedes el stock y registro histórico con fecha y hora.',
       icon: UtensilsCrossed,
       badge: 'Toma para preparación'
@@ -50,7 +90,7 @@ export default function HomeView({ setActiveTab }) {
     <div className="space-y-6 pb-20">
       {/* 1. Hero Banner de marca: negro, compacto, con el logo como protagonista */}
       <section
-        aria-label="LIACO Pizzería"
+        aria-label={nombreNegocio}
         className="relative w-full overflow-hidden rounded-2xl bg-zinc-950 ring-1 ring-zinc-800 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.45)]"
       >
         {/* Textura: cuadrícula muy tenue que se desvanece hacia los bordes */}
@@ -70,13 +110,24 @@ export default function HomeView({ setActiveTab }) {
           {/* Filete izquierdo */}
           <span aria-hidden="true" className="hidden sm:block h-px flex-1 max-w-[160px] bg-gradient-to-r from-transparent to-white/35" />
 
-          <img
-            src="/logo-liaco.png"
-            alt="LIACO Pizzería"
-            draggable="false"
-            onError={(e) => { e.currentTarget.src = '/logo.png'; }}
-            className="h-20 sm:h-24 md:h-28 w-auto object-contain select-none drop-shadow-[0_4px_18px_rgba(255,255,255,0.12)]"
-          />
+          {bannerUrl ? (
+            <img
+              src={bannerUrl}
+              alt={nombreNegocio}
+              draggable="false"
+              onError={() => setImgError(true)}
+              className="h-20 sm:h-24 md:h-28 w-auto max-w-[280px] object-contain select-none drop-shadow-[0_4px_18px_rgba(255,255,255,0.12)]"
+            />
+          ) : (
+            <div className="text-center py-2 sm:py-3 select-none">
+              <p className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-widest uppercase font-display drop-shadow-[0_4px_18px_rgba(255,255,255,0.12)]">
+                {nombreNegocio || 'MI NEGOCIO'}
+              </p>
+              <span className="block text-[10px] sm:text-xs font-bold text-zinc-400 tracking-[0.28em] uppercase mt-1.5">
+                SISTEMA DE GESTIÓN & INVENTARIO
+              </span>
+            </div>
+          )}
 
           {/* Filete derecho */}
           <span aria-hidden="true" className="hidden sm:block h-px flex-1 max-w-[160px] bg-gradient-to-l from-transparent to-white/35" />
@@ -87,16 +138,16 @@ export default function HomeView({ setActiveTab }) {
       <div className="bg-white rounded-3xl border border-zinc-200 p-6 sm:p-8 shadow-sm space-y-8">
         
         {/* Cabecera de la sección */}
-        <div className="border-b border-zinc-100 pb-6 space-y-1">
+        <div className="border-b border-zinc-100 pb-6 space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 text-xs font-semibold text-zinc-700">
             <Info className="w-3.5 h-3.5 text-zinc-900" />
             <span>Plataforma Operativa</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight font-display">
-            Información Básica del Sistema
+            {saludo}, {nombreNegocio}
           </h2>
           <p className="text-sm text-zinc-500 max-w-2xl leading-relaxed">
-            Sistema integral diseñado para la gestión de cocina, control de existencias en almacén y automatización de pedidos a proveedores para <strong>LIACO PIZZERIA</strong>.
+            Sistema integral diseñado para la gestión operativa, control de existencias en almacén y automatización de pedidos a proveedores para <strong>{nombreNegocio}</strong>.
           </p>
         </div>
 

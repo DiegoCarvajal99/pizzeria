@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { useAuth } from '../context/AuthContext';
 import SearchableSelect from './common/SearchableSelect';
 import NumericInput from './common/NumericInput';
+import AnimatedModal from './common/AnimatedModal';
 import { 
   UtensilsCrossed,
   Search, 
@@ -24,6 +26,13 @@ import {
 } from 'lucide-react';
 
 export default function InventarioView() {
+  let authContext = null;
+  try {
+    authContext = useAuth();
+  } catch (e) {}
+  const negocioActivo = authContext?.negocioActivo;
+  const nombreAreaConsumo = negocioActivo?.nombreAreaConsumo || 'Consumo Cocina';
+
   const { 
     productos = [], 
     proveedores = [], 
@@ -228,10 +237,10 @@ export default function InventarioView() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-zinc-900 font-display">
-                  Consumo & Descuento de Insumos
+                  {nombreAreaConsumo} & Descuento
                 </h1>
                 <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
-                  Cocina
+                  {negocioActivo?.sede || 'OPERACIÓN'}
                 </span>
               </div>
               <p className="text-xs text-zinc-500 mt-0.5">
@@ -637,7 +646,7 @@ export default function InventarioView() {
           ) : (
             <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden divide-y divide-zinc-100">
               <div className="bg-black text-white px-5 py-3 flex items-center justify-between text-xs font-display">
-                <span className="uppercase tracking-wider font-bold">Bitácora de Salidas de Cocina</span>
+                <span className="uppercase tracking-wider font-bold">Bitácora de Salidas ({nombreAreaConsumo})</span>
                 <span className="text-zinc-400 font-mono">{consumosHistorial.length} movimientos</span>
               </div>
 
@@ -707,9 +716,13 @@ export default function InventarioView() {
           VENTANA DE ALERTAS (MODAL DE EXCESO DE CONSUMO)
           Se activa cuando lo que se va a tomar es MAYOR a lo que hay en el sistema
           ========================================================================= */}
-      {alertaExceso && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-4 animate-scale-up">
+      <AnimatedModal
+        isOpen={alertaExceso}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 space-y-4"
+      >
+        {(exceso) => (
+          <>
             {/* Cabecera con Icono de Advertencia */}
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-2xl bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
@@ -729,24 +742,24 @@ export default function InventarioView() {
             <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-zinc-600 font-medium">Insumo:</span>
-                <span className="font-bold text-zinc-900">{alertaExceso.producto.nombre}</span>
+                <span className="font-bold text-zinc-900">{exceso.producto.nombre}</span>
               </div>
               <div className="flex items-center justify-between border-t border-amber-200/60 pt-1.5">
                 <span className="text-zinc-600 font-medium">Stock actual disponible:</span>
                 <span className="font-mono font-bold text-zinc-900">
-                  {alertaExceso.stockActual} {alertaExceso.producto.unidad}
+                  {exceso.stockActual} {exceso.producto.unidad}
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-amber-200/60 pt-1.5">
                 <span className="text-amber-900 font-semibold">Cantidad que vas a tomar:</span>
                 <span className="font-mono font-bold text-rose-700 text-sm">
-                  {alertaExceso.cantidadTomada} {alertaExceso.producto.unidad}
+                  {exceso.cantidadTomada} {exceso.producto.unidad}
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-amber-200/60 pt-1.5 bg-amber-100/70 -mx-4 -mb-4 p-3 rounded-b-2xl">
                 <span className="text-amber-950 font-bold">Diferencia faltante:</span>
                 <span className="font-mono font-black text-rose-800">
-                  -{alertaExceso.diferencia} {alertaExceso.producto.unidad}
+                  -{exceso.diferencia} {exceso.producto.unidad}
                 </span>
               </div>
             </div>
@@ -765,27 +778,31 @@ export default function InventarioView() {
                 Entendido, corregir cantidad
               </button>
 
-              {alertaExceso.stockActual > 0 && (
+              {exceso.stockActual > 0 && (
                 <button
                   type="button"
                   onClick={handleAjustarAlMaximoDisponible}
                   className="w-full sm:flex-1 py-2.5 rounded-xl border border-zinc-300 hover:bg-zinc-100 text-xs font-bold text-zinc-700 transition-colors cursor-pointer"
                   title="Descontar únicamente las existencias reales disponibles"
                 >
-                  Tomar solo disponible ({alertaExceso.stockActual} {alertaExceso.producto.unidad})
+                  Tomar solo disponible ({exceso.stockActual} {exceso.producto.unidad})
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AnimatedModal>
 
       {/* =========================================================================
           MODAL DE AJUSTE FÍSICO MANUAL (AUDITORÍA TOTAL DE BASE)
           ========================================================================= */}
-      {productoAjusteManual && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 space-y-4 animate-scale-up">
+      <AnimatedModal
+        isOpen={productoAjusteManual}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 space-y-4"
+      >
+        {(prodAjuste) => (
+          <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Edit3 className="w-5 h-5 text-black" />
@@ -803,13 +820,13 @@ export default function InventarioView() {
             </div>
 
             <p className="text-xs text-zinc-500">
-              Modifica directamente el inventario total de <strong className="text-zinc-900">{productoAjusteManual.nombre}</strong> tras realizar un conteo físico manual.
+              Modifica directamente el inventario total de <strong className="text-zinc-900">{prodAjuste.nombre}</strong> tras realizar un conteo físico manual.
             </p>
 
             <form onSubmit={handleGuardarAjusteFisico} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-600 mb-1">
-                  Nuevo Stock Total ({productoAjusteManual.unidad})
+                  Nuevo Stock Total ({prodAjuste.unidad})
                 </label>
                 <NumericInput
                   value={nuevoStockManual}
@@ -836,9 +853,9 @@ export default function InventarioView() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AnimatedModal>
     </div>
   );
 }

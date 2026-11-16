@@ -3,6 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import { UNIDADES_DISPONIBLES } from '../data/initialData';
 import SearchableSelect from './common/SearchableSelect';
 import NumericInput from './common/NumericInput';
+import AnimatedModal from './common/AnimatedModal';
 import { 
   Plus, 
   Pencil, 
@@ -921,9 +922,11 @@ export default function GestionProductosView() {
       {/* ========================================================================= */}
       {/* MODAL: "Nuevo Producto" & "Importar Lista Masiva" (TOTALMENTE LIMPIO)      */}
       {/* ========================================================================= */}
-      {modalNuevoAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden animate-scale-up">
+      <AnimatedModal
+        isOpen={modalNuevoAbierto}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white border border-zinc-200 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden"
+      >
             {/* Cabecera del modal */}
             <div className="p-4 sm:p-5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1269,16 +1272,16 @@ export default function GestionProductosView() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </AnimatedModal>
 
       {/* ========================================================================= */}
       {/* MODAL: "Nuevo / Editar Proveedor" (SECCIÓN PROVEEDORES)                    */}
       {/* ========================================================================= */}
-      {modalProveedorAbierto && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4 animate-scale-up">
+      <AnimatedModal
+        isOpen={modalProveedorAbierto}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4"
+      >
             <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
               <h3 className="font-bold text-zinc-900 text-base font-display flex items-center gap-2">
                 <Store className="w-4 h-4 text-black" />
@@ -1359,16 +1362,18 @@ export default function GestionProductosView() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </AnimatedModal>
 
       {/* ========================================================================= */}
       {/* MODAL: EDICIÓN DE PRODUCTO EXISTENTE                                      */}
       {/* ========================================================================= */}
-      {productoEnEdicion && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4 animate-scale-up">
+      <AnimatedModal
+        isOpen={productoEnEdicion}
+        overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        panelClassName="bg-white border border-zinc-200 rounded-3xl max-w-md w-full shadow-2xl p-5 space-y-4"
+      >
+        {(prodEdit) => (
+          <>
             <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
               <h3 className="font-bold text-zinc-900 text-base font-display flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-black" />
@@ -1388,8 +1393,8 @@ export default function GestionProductosView() {
                 <label className="block text-xs font-bold text-zinc-700 mb-1">Nombre</label>
                 <input
                   type="text"
-                  value={productoEnEdicion.nombre}
-                  onChange={(e) => setProductoEnEdicion({ ...productoEnEdicion, nombre: e.target.value.toUpperCase() })}
+                  value={prodEdit.nombre}
+                  onChange={(e) => setProductoEnEdicion({ ...prodEdit, nombre: e.target.value.toUpperCase() })}
                   required
                   className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 focus:outline-none focus:border-black font-medium uppercase"
                 />
@@ -1399,13 +1404,13 @@ export default function GestionProductosView() {
                 <label className="block text-xs font-bold text-zinc-700 mb-1">Proveedor</label>
                 <SearchableSelect
                   options={opcionesProveedores}
-                  value={productoEnEdicion.proveedorId}
+                  value={prodEdit.proveedorId}
                   onChange={(val) => {
                     const p = proveedores.find(prov => prov.id === val);
                     setProductoEnEdicion({
-                      ...productoEnEdicion,
+                      ...prodEdit,
                       proveedorId: val,
-                      proveedorNombre: p ? p.nombre : productoEnEdicion.proveedorNombre
+                      proveedorNombre: p ? p.nombre : prodEdit.proveedorNombre
                     });
                   }}
                   placeholder="Seleccionar proveedor"
@@ -1416,8 +1421,8 @@ export default function GestionProductosView() {
                 <label className="block text-xs font-bold text-zinc-700 mb-1">Unidad</label>
                 <SearchableSelect
                   options={opcionesUnidades}
-                  value={productoEnEdicion.unidad}
-                  onChange={(val) => setProductoEnEdicion({ ...productoEnEdicion, unidad: val })}
+                  value={prodEdit.unidad}
+                  onChange={(val) => setProductoEnEdicion({ ...prodEdit, unidad: val })}
                   placeholder="Seleccionar unidad"
                   allowCustom={true}
                 />
@@ -1427,8 +1432,8 @@ export default function GestionProductosView() {
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">Stock Actual</label>
                   <NumericInput
-                    value={productoEnEdicion.stock}
-                    onChange={(val) => setProductoEnEdicion({ ...productoEnEdicion, stock: val })}
+                    value={prodEdit.stock}
+                    onChange={(val) => setProductoEnEdicion({ ...prodEdit, stock: val })}
                     className="w-full font-mono font-bold"
                   />
                 </div>
@@ -1436,8 +1441,8 @@ export default function GestionProductosView() {
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">Stock Mínimo</label>
                   <NumericInput
-                    value={productoEnEdicion.stockMinimo}
-                    onChange={(val) => setProductoEnEdicion({ ...productoEnEdicion, stockMinimo: val })}
+                    value={prodEdit.stockMinimo}
+                    onChange={(val) => setProductoEnEdicion({ ...prodEdit, stockMinimo: val })}
                     className="w-full font-mono font-bold"
                   />
                 </div>
@@ -1467,9 +1472,9 @@ export default function GestionProductosView() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AnimatedModal>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { useAuth } from '../context/AuthContext';
 import NumericInput from './common/NumericInput';
 import { 
   Truck, 
@@ -16,6 +17,14 @@ import {
 } from 'lucide-react';
 
 export default function RecepcionView() {
+  let authContext = null;
+  try {
+    authContext = useAuth();
+  } catch (e) {}
+  const negocioActivo = authContext?.negocioActivo;
+  const emojiNegocio = negocioActivo?.emoji || '🍕';
+  const nombreNegocioHeader = (negocioActivo?.nombreNegocio || 'PEDIDO SEMANAL').toUpperCase();
+
   const { 
     pedidos, 
     confirmarRecepcionItems, 
@@ -82,7 +91,7 @@ export default function RecepcionView() {
     const cuerpoProveedores = bloquesProveedores.join('\n\n');
 
     const lineasMensaje = [
-      '🍕 PEDIDO SEMANAL 🍕',
+      `${emojiNegocio} PEDIDO - ${nombreNegocioHeader} ${emojiNegocio}`,
       '',
       `🔢 Pedido N.º: ${idPedidoStr}`,
       `📅 Fecha: ${fechaStr}`,
@@ -117,7 +126,7 @@ export default function RecepcionView() {
     });
 
     const lineasMensaje = [
-      '🍕 PEDIDO SEMANAL 🍕',
+      `${emojiNegocio} PEDIDO - ${nombreNegocioHeader} ${emojiNegocio}`,
       ''
     ];
 
