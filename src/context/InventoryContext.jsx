@@ -141,19 +141,27 @@ export function InventoryProvider({ children }) {
       return;
     }
 
-    const esLiaco = authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com';
+    const emailNegocio = (authContext?.negocioActivo?.email || authContext?.currentUser?.email || '').toLowerCase().trim();
+    const esLiaco = emailNegocio === 'liacopizzeria@yopmail.com' || emailNegocio.includes('liaco');
 
     // 1. Cargar Productos
     try {
       const savedProd = localStorage.getItem(`inv_${negocioId}_productos`);
-      if (savedProd && JSON.parse(savedProd).length > 0) {
-        setProductos(JSON.parse(savedProd));
+      const parsedSavedProd = savedProd ? JSON.parse(savedProd) : [];
+      const legacyProd = localStorage.getItem('pizzeria_inventario_productos:v2');
+      const parsedLegacyProd = legacyProd ? JSON.parse(legacyProd) : [];
+
+      if (esLiaco && parsedLegacyProd.length > parsedSavedProd.length) {
+        setProductos(parsedLegacyProd);
+        localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(parsedLegacyProd));
+      } else if (parsedSavedProd.length > 0) {
+        setProductos(parsedSavedProd);
+      } else if (esLiaco && parsedLegacyProd.length > 0) {
+        setProductos(parsedLegacyProd);
+        localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(parsedLegacyProd));
       } else if (esLiaco) {
-        const legacyProd = localStorage.getItem('pizzeria_inventario_productos:v2');
-        const parsedLegacy = legacyProd ? JSON.parse(legacyProd) : [];
-        const prodsAUsar = parsedLegacy.length > 0 ? parsedLegacy : LIACO_HISTORICO_PRODUCTOS;
-        setProductos(prodsAUsar);
-        localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(prodsAUsar));
+        setProductos(LIACO_HISTORICO_PRODUCTOS);
+        localStorage.setItem(`inv_${negocioId}_productos`, JSON.stringify(LIACO_HISTORICO_PRODUCTOS));
       } else {
         setProductos([]);
       }
@@ -164,14 +172,21 @@ export function InventoryProvider({ children }) {
     // 2. Cargar Proveedores
     try {
       const savedProv = localStorage.getItem(`inv_${negocioId}_proveedores`);
-      if (savedProv && JSON.parse(savedProv).length > 0) {
-        setProveedores(JSON.parse(savedProv));
+      const parsedSavedProv = savedProv ? JSON.parse(savedProv) : [];
+      const legacyProv = localStorage.getItem('pizzeria_inventario_proveedores:v2');
+      const parsedLegacyProv = legacyProv ? JSON.parse(legacyProv) : [];
+
+      if (esLiaco && parsedLegacyProv.length > parsedSavedProv.length) {
+        setProveedores(parsedLegacyProv);
+        localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(parsedLegacyProv));
+      } else if (parsedSavedProv.length > 0) {
+        setProveedores(parsedSavedProv);
+      } else if (esLiaco && parsedLegacyProv.length > 0) {
+        setProveedores(parsedLegacyProv);
+        localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(parsedLegacyProv));
       } else if (esLiaco) {
-        const legacyProv = localStorage.getItem('pizzeria_inventario_proveedores:v2');
-        const parsedLegacyProv = legacyProv ? JSON.parse(legacyProv) : [];
-        const provsAUsar = parsedLegacyProv.length > 0 ? parsedLegacyProv : LIACO_HISTORICO_PROVEEDORES;
-        setProveedores(provsAUsar);
-        localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(provsAUsar));
+        setProveedores(LIACO_HISTORICO_PROVEEDORES);
+        localStorage.setItem(`inv_${negocioId}_proveedores`, JSON.stringify(LIACO_HISTORICO_PROVEEDORES));
       } else {
         setProveedores([]);
       }
@@ -179,20 +194,21 @@ export function InventoryProvider({ children }) {
       setProveedores([]);
     }
 
-    // 3. Cargar Pedidos
+    // 3. Cargar Pedidos (incluye pedidos pendientes por recibir y completados)
     try {
       const savedPed = localStorage.getItem(`inv_${negocioId}_pedidos`);
-      if (savedPed) {
-        setPedidos(JSON.parse(savedPed));
-      } else if (esLiaco) {
-        const legacyPed = localStorage.getItem('pizzeria_inventario_pedidos:v2');
-        if (legacyPed) {
-          const parsed = JSON.parse(legacyPed);
-          setPedidos(parsed);
-          localStorage.setItem(`inv_${negocioId}_pedidos`, JSON.stringify(parsed));
-        } else {
-          setPedidos([]);
-        }
+      const parsedSavedPed = savedPed ? JSON.parse(savedPed) : [];
+      const legacyPed = localStorage.getItem('pizzeria_inventario_pedidos:v2');
+      const parsedLegacyPed = legacyPed ? JSON.parse(legacyPed) : [];
+
+      if (esLiaco && parsedLegacyPed.length > parsedSavedPed.length) {
+        setPedidos(parsedLegacyPed);
+        localStorage.setItem(`inv_${negocioId}_pedidos`, JSON.stringify(parsedLegacyPed));
+      } else if (parsedSavedPed.length > 0) {
+        setPedidos(parsedSavedPed);
+      } else if (esLiaco && parsedLegacyPed.length > 0) {
+        setPedidos(parsedLegacyPed);
+        localStorage.setItem(`inv_${negocioId}_pedidos`, JSON.stringify(parsedLegacyPed));
       } else {
         setPedidos([]);
       }
@@ -203,17 +219,18 @@ export function InventoryProvider({ children }) {
     // 4. Cargar Movimientos
     try {
       const savedMov = localStorage.getItem(`inv_${negocioId}_movimientos`);
-      if (savedMov) {
-        setMovimientos(JSON.parse(savedMov));
-      } else if (esLiaco) {
-        const legacyMov = localStorage.getItem('pizzeria_inventario_movimientos:v2');
-        if (legacyMov) {
-          const parsed = JSON.parse(legacyMov);
-          setMovimientos(parsed);
-          localStorage.setItem(`inv_${negocioId}_movimientos`, JSON.stringify(parsed));
-        } else {
-          setMovimientos([]);
-        }
+      const parsedSavedMov = savedMov ? JSON.parse(savedMov) : [];
+      const legacyMov = localStorage.getItem('pizzeria_inventario_movimientos:v2');
+      const parsedLegacyMov = legacyMov ? JSON.parse(legacyMov) : [];
+
+      if (esLiaco && parsedLegacyMov.length > parsedSavedMov.length) {
+        setMovimientos(parsedLegacyMov);
+        localStorage.setItem(`inv_${negocioId}_movimientos`, JSON.stringify(parsedLegacyMov));
+      } else if (parsedSavedMov.length > 0) {
+        setMovimientos(parsedSavedMov);
+      } else if (esLiaco && parsedLegacyMov.length > 0) {
+        setMovimientos(parsedLegacyMov);
+        localStorage.setItem(`inv_${negocioId}_movimientos`, JSON.stringify(parsedLegacyMov));
       } else {
         setMovimientos([]);
       }
@@ -247,7 +264,7 @@ export function InventoryProvider({ children }) {
     } catch {
       // Conservar estado en memoria
     }
-  }, [negocioId, authContext?.negocioActivo?.email]);
+  }, [negocioId, authContext?.negocioActivo?.email, authContext?.currentUser?.email]);
 
   const mostrarAlerta = (mensaje, tipo = 'success', titulo = '') => {
     setNotificacion({ mensaje, tipo, titulo, id: Date.now() });
@@ -353,6 +370,9 @@ export function InventoryProvider({ children }) {
   useEffect(() => {
     if (!isFirebaseConfigured || !db || !negocioId || negocioId === 'default_tenant') return;
 
+    const emailNegocio = (authContext?.negocioActivo?.email || authContext?.currentUser?.email || '').toLowerCase().trim();
+    const esLiaco = emailNegocio === 'liacopizzeria@yopmail.com' || emailNegocio.includes('liaco');
+
     const manejarErrorFirebase = (err, recurso) => {
       console.warn(`Error escuchando ${recurso} en Firestore para ${negocioId}:`, err);
       if (err.code === 'permission-denied') {
@@ -364,51 +384,168 @@ export function InventoryProvider({ children }) {
 
     const unsubs = [];
 
-    // Escuchar subcolección de productos del negocio
-    const unsubProductos = onSnapshot(collection(db, 'negocios', negocioId, 'productos'), (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 1. Escuchar subcolección de productos del negocio
+    const unsubProductos = onSnapshot(collection(db, 'negocios', negocioId, 'productos'), async (snap) => {
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (esLiaco) {
+        try {
+          // Verificar si en la colección raíz de Firestore están los productos creados antes de multi-tenant
+          const rootProdsSnap = await getDocs(collection(db, 'productos'));
+          if (!rootProdsSnap.empty) {
+            const listRoot = rootProdsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const idsEnSub = new Set(list.map(d => d.id));
+            const faltantes = listRoot.filter(p => !idsEnSub.has(p.id));
+
+            if (faltantes.length > 0) {
+              const batch = writeBatch(db);
+              faltantes.forEach(p => {
+                batch.set(doc(db, 'negocios', negocioId, 'productos', p.id), { ...p, updatedAt: serverTimestamp() }, { merge: true });
+              });
+              await batch.commit();
+            }
+
+            if (listRoot.length >= list.length) {
+              list = listRoot;
+            }
+          }
+        } catch (e) {
+          console.warn('Aviso sincronizando productos históricos raíz de Liaco:', e);
+        }
+      }
+
+      if (list.length > 0) {
         setProductos(list);
-      } else if (authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com') {
-        // Auto-sincronizar los insumos históricos de Liaco a su subcolección en Firestore
+      } else if (esLiaco) {
+        // Fallback a insumos históricos
         LIACO_HISTORICO_PRODUCTOS.forEach(p => syncDoc('productos', p.id, p));
+        setProductos(LIACO_HISTORICO_PRODUCTOS);
+      } else {
+        setProductos([]);
       }
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'productos'));
     unsubs.push(unsubProductos);
 
-    // Escuchar subcolección de proveedores del negocio
-    const unsubProveedores = onSnapshot(collection(db, 'negocios', negocioId, 'proveedores'), (snap) => {
-      if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 2. Escuchar subcolección de proveedores del negocio
+    const unsubProveedores = onSnapshot(collection(db, 'negocios', negocioId, 'proveedores'), async (snap) => {
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (esLiaco) {
+        try {
+          // Verificar si en la colección raíz de Firestore están los proveedores creados antes de multi-tenant
+          const rootProvsSnap = await getDocs(collection(db, 'proveedores'));
+          if (!rootProvsSnap.empty) {
+            const listRoot = rootProvsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const idsEnSub = new Set(list.map(d => d.id));
+            const faltantes = listRoot.filter(p => !idsEnSub.has(p.id));
+
+            if (faltantes.length > 0) {
+              const batch = writeBatch(db);
+              faltantes.forEach(p => {
+                batch.set(doc(db, 'negocios', negocioId, 'proveedores', p.id), { ...p, updatedAt: serverTimestamp() }, { merge: true });
+              });
+              await batch.commit();
+            }
+
+            if (listRoot.length >= list.length) {
+              list = listRoot;
+            }
+          }
+        } catch (e) {
+          console.warn('Aviso sincronizando proveedores históricos raíz de Liaco:', e);
+        }
+      }
+
+      if (list.length > 0) {
         setProveedores(list);
-      } else if (authContext?.negocioActivo?.email === 'liacopizzeria@yopmail.com') {
-        // Auto-sincronizar proveedores históricos de Liaco a su subcolección en Firestore
+      } else if (esLiaco) {
         LIACO_HISTORICO_PROVEEDORES.forEach(p => syncDoc('proveedores', p.id, p));
+        setProveedores(LIACO_HISTORICO_PROVEEDORES);
+      } else {
+        setProveedores([]);
       }
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'proveedores'));
     unsubs.push(unsubProveedores);
 
-    // Escuchar subcolección de pedidos del negocio
-    const unsubPedidos = onSnapshot(collection(db, 'negocios', negocioId, 'pedidos'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 3. Escuchar subcolección de pedidos del negocio (incluye pedidos pendientes por recibir)
+    const unsubPedidos = onSnapshot(collection(db, 'negocios', negocioId, 'pedidos'), async (snap) => {
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (esLiaco) {
+        try {
+          // Verificar si en la colección raíz de Firestore están los pedidos / listas por recibir de Liaco
+          const rootPedsSnap = await getDocs(collection(db, 'pedidos'));
+          if (!rootPedsSnap.empty) {
+            const listRoot = rootPedsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const idsEnSub = new Set(list.map(d => d.id));
+            const faltantes = listRoot.filter(p => !idsEnSub.has(p.id));
+
+            if (faltantes.length > 0) {
+              const batch = writeBatch(db);
+              faltantes.forEach(p => {
+                batch.set(doc(db, 'negocios', negocioId, 'pedidos', p.id), { ...p, updatedAt: serverTimestamp() }, { merge: true });
+              });
+              await batch.commit();
+            }
+
+            if (list.length === 0 || listRoot.length > list.length) {
+              list = listRoot;
+            }
+          } else if (list.length === 0) {
+            // Si la colección raíz y la subcolección están vacías en Firestore, revisar el almacenamiento local legacy
+            const legacyPed = localStorage.getItem('pizzeria_inventario_pedidos:v2');
+            if (legacyPed) {
+              const parsed = JSON.parse(legacyPed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                list = parsed;
+                const batch = writeBatch(db);
+                parsed.forEach(p => {
+                  batch.set(doc(db, 'negocios', negocioId, 'pedidos', p.id), { ...p, updatedAt: serverTimestamp() }, { merge: true });
+                });
+                await batch.commit();
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Aviso sincronizando pedidos históricos raíz de Liaco:', e);
+        }
+      }
+
       list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
       setPedidos(list);
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'pedidos'));
     unsubs.push(unsubPedidos);
 
-    // Escuchar subcolección de movimientos del negocio
-    const unsubMovimientos = onSnapshot(collection(db, 'negocios', negocioId, 'movimientos'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // 4. Escuchar subcolección de movimientos del negocio
+    const unsubMovimientos = onSnapshot(collection(db, 'negocios', negocioId, 'movimientos'), async (snap) => {
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      if (esLiaco && list.length === 0) {
+        try {
+          const rootMovsSnap = await getDocs(collection(db, 'movimientos'));
+          if (!rootMovsSnap.empty) {
+            list = rootMovsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const batch = writeBatch(db);
+            rootMovsSnap.docs.forEach(d => {
+              batch.set(doc(db, 'negocios', negocioId, 'movimientos', d.id), { ...d.data(), updatedAt: serverTimestamp() }, { merge: true });
+            });
+            await batch.commit();
+          }
+        } catch (e) {
+          console.warn('Aviso sincronizando movimientos históricos de Liaco:', e);
+        }
+      }
+
       list.sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
       setMovimientos(list);
       setErrorFirebase(null);
     }, (err) => manejarErrorFirebase(err, 'movimientos'));
     unsubs.push(unsubMovimientos);
 
-    // Escuchar subcolección de empleados de compras del negocio
+    // 5. Escuchar subcolección de empleados de compras del negocio
     const unsubEmpleados = onSnapshot(collection(db, 'negocios', negocioId, 'empleados_compras'), (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
@@ -418,7 +555,7 @@ export function InventoryProvider({ children }) {
     unsubs.push(unsubEmpleados);
 
     return () => unsubs.forEach(unsub => unsub && unsub());
-  }, [negocioId]);
+  }, [negocioId, authContext?.negocioActivo?.email, authContext?.currentUser?.email]);
 
   // Sincronizar un documento con la subcolección del negocio en Firestore
   const syncDoc = async (colName, id, data) => {

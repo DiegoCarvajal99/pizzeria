@@ -138,34 +138,29 @@ export function AuthProvider({ children }) {
 
     const unsub = onSnapshot(collection(db, 'negocios'), (snap) => {
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Filtrar administradores de la lista de clientes a gestionar
-      const clientes = lista.filter(item => item.rol === 'cliente');
 
-      // Si Liaco aún no ha iniciado sesión por primera vez en Firestore, incluirlo como Cliente #1
-      const existeLiaco = clientes.some(c => c.email?.toLowerCase() === 'liacopizzeria@yopmail.com');
-      if (!existeLiaco) {
-        clientes.unshift({
-          id: 'cliente_liaco_pizzeria',
-          uid: 'cliente_liaco_pizzeria',
-          email: 'liacopizzeria@yopmail.com',
-          nombreNegocio: 'LIACO PIZZERIA',
-          propietario: 'LIACO',
-          telefono: '',
-          logoUrl: '/logo.png',
-          bannerUrl: '/hero-banner.png',
-          rubro: 'pizzeria',
-          emoji: '🍕',
-          nombreAreaConsumo: 'Consumo Cocina',
-          colorTema: 'negro',
-          sede: 'PRINCIPAL',
-          rol: 'cliente',
-          estado: 'activo',
-          diasSuscripcion: 30,
-          fechaInicioMembresia: new Date().toISOString(),
-          fechaVencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          fechaCreacion: new Date().toISOString()
-        });
+      // Si existe el documento con UID real de Liaco (gTlUKncY0gTG...), eliminar el documento duplicado 'cliente_liaco_pizzeria' de Firestore
+      const liacoReal = lista.find(d => d.email?.toLowerCase() === 'liacopizzeria@yopmail.com' && d.id !== 'cliente_liaco_pizzeria');
+      if (liacoReal) {
+        deleteDoc(doc(db, 'negocios', 'cliente_liaco_pizzeria')).catch(() => {});
       }
+
+      // Filtrar administradores de la lista de clientes a gestionar y descartar el duplicado si existe el real
+      let clientes = lista.filter(item => {
+        if (item.rol !== 'cliente') return false;
+        if (item.id === 'cliente_liaco_pizzeria' && liacoReal) return false;
+        return true;
+      });
+
+      // Deduplicar clientes por email para garantizar que nunca se muestre repetido en la interfaz
+      const emailsVistos = new Set();
+      clientes = clientes.filter(item => {
+        const em = (item.email || '').toLowerCase().trim();
+        if (!em) return true;
+        if (emailsVistos.has(em)) return false;
+        emailsVistos.add(em);
+        return true;
+      });
 
       // Ordenar por fecha de creación descendente
       clientes.sort((a, b) => new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0));
