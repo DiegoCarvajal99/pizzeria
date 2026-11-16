@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [cargandoAuth, setCargandoAuth] = useState(true);
+  const [errorAuth, setErrorAuth] = useState(null);
 
   // Lista de todos los clientes (Solo accesible y escuchada en tiempo real si el usuario es Admin)
   const [todosLosClientes, setTodosLosClientes] = useState([]);
@@ -57,6 +58,9 @@ export function AuthProvider({ children }) {
       setCurrentUser(user);
       if (user) {
         try {
+          const emailUser = (user.email || '').toLowerCase().trim();
+          const esAdminEmail = emailUser === 'admin-inventario@yopmail.com' || emailUser.includes('admin');
+
           // 1. Consultar el perfil del negocio por user.uid directo
           const docRef = doc(db, 'negocios', user.uid);
           const docSnap = await getDoc(docRef);
@@ -64,16 +68,50 @@ export function AuthProvider({ children }) {
           let perfilCargado = null;
 
           if (docSnap.exists()) {
-            perfilCargado = { id: docSnap.id, ...docSnap.data() };
+            const dataNegocio = docSnap.data();
+            const emailDoc = (dataNegocio.email || '').toLowerCase().trim();
+
+            // REGLA ESTRICTA DE SEGURIDAD:
+            // Si el correo del usuario logueado en Firebase Auth ya NO coincide con el correo activo del negocio,
+            // significa que este correo anterior fue revocado o cambiado. SE EXPULSA DE INMEDIATO.
+            if (!esAdminEmail && emailDoc && emailDoc !== emailUser) {
+              console.warn(`ACCESO DENEGADO: El correo ${emailUser} fue revocado. El correo activo es ${emailDoc}.`);
+              await firebaseSignOut(auth);
+              setCurrentUser(null);
+              setUserProfile(null);
+              setErrorAuth("Este correo electrónico ya no tiene acceso porque fue cambiado o desvinculado por el Administrador.");
+              setCargandoAuth(false);
+              return;
+            }
+
+            perfilCargado = { id: docSnap.id, ...dataNegocio };
           } else {
-            // 2. Si no existe por UID (ej. el Administrador actualizó el correo del cliente), buscar por correo
-            const emailNormalizado = user.email.toLowerCase().trim();
-            const q = query(collection(db, 'negocios'), where('email', '==', emailNormalizado));
-            const querySnap = await getDocs(q);
+            // 2. Si no existe por UID, buscar por correo normalizado exacto
+            const q = query(collection(db, 'negocios'), where('email', '==', emailUser));
+            let querySnap = await getDocs(q);
+
+            if (querySnap.empty) {
+              // Buscar por authUid vinculado
+              const qAuth = query(collection(db, 'negocios'), where('authUid', '==', user.uid));
+              querySnap = await getDocs(qAuth);
+            }
 
             if (!querySnap.empty) {
               const negocioDoc = querySnap.docs[0];
-              perfilCargado = { id: negocioDoc.id, ...negocioDoc.data() };
+              const dataNegocio = negocioDoc.data();
+              const emailDoc = (dataNegocio.email || '').toLowerCase().trim();
+
+              if (!esAdminEmail && emailDoc && emailDoc !== emailUser) {
+                console.warn(`ACCESO DENEGADO: El correo ${emailUser} no coincide con el activo ${emailDoc}.`);
+                await firebaseSignOut(auth);
+                setCurrentUser(null);
+                setUserProfile(null);
+                setErrorAuth("Este correo electrónico ya no tiene acceso porque fue cambiado o desvinculado por el Administrador.");
+                setCargandoAuth(false);
+                return;
+              }
+
+              perfilCargado = { id: negocioDoc.id, ...dataNegocio };
               // Vincular el uid de autenticación para accesos directos posteriores
               try {
                 await updateDoc(doc(db, 'negocios', negocioDoc.id), {
@@ -88,33 +126,43 @@ export function AuthProvider({ children }) {
 
           if (perfilCargado) {
             setUserProfile(perfilCargado);
+            setErrorAuth(null);
           } else {
-            // Solo el correo del administrador tiene rol de Super Admin
-            const esAdminEmail = user.email.toLowerCase() === 'admin-inventario@yopmail.com' || user.email.toLowerCase().includes('admin');
-            const esClienteLiaco = user.email.toLowerCase() === 'liacopizzeria@yopmail.com';
-
-            const nuevoPerfil = {
-              uid: user.uid,
-              email: user.email.toLowerCase(),
-              nombreNegocio: esAdminEmail ? 'ADMINISTRADOR MAESTRO' : (esClienteLiaco ? 'LIACO PIZZERIA' : 'MI NEGOCIO'),
-              propietario: esAdminEmail ? 'ADMINISTRADOR' : (esClienteLiaco ? 'LIACO' : 'CLIENTE'),
-              telefono: '',
-              logoUrl: esClienteLiaco ? '/logo.png' : '',
-              bannerUrl: esClienteLiaco ? '/hero-banner.png' : '',
-              rubro: esClienteLiaco ? 'pizzeria' : 'general',
-              emoji: esClienteLiaco ? '🍕' : '🏪',
-              nombreAreaConsumo: 'Consumo Cocina',
-              colorTema: 'negro',
-              sede: 'PRINCIPAL',
-              rol: esAdminEmail ? 'admin' : 'cliente', // Liaco es estrictamente cliente
-              estado: 'activo',
-              diasSuscripcion: esAdminEmail ? 9999 : 30,
-              fechaInicioMembresia: new Date().toISOString(),
-              fechaVencimiento: new Date(Date.now() + (esAdminEmail ? 9999 : 30) * 24 * 60 * 60 * 1000).toISOString(),
-              fechaCreacion: new Date().toISOString()
-            };
-            await setDoc(docRef, nuevoPerfil);
-            setUserProfile(nuevoPerfil);
+            // Solo crear automáticamente si es el Super Administrador
+            if (esAdminEmail) {
+              const nuevoPerfil = {
+                uid: user.uid,
+                email: emailUser,
+                nombreNegocio: 'ADMINISTRADOR MAESTRO',
+                propietario: 'ADMINISTRADOR',
+                telefono: '',
+                logoUrl: '',
+                bannerUrl: '',
+                rubro: 'general',
+                emoji: '👑',
+                nombreAreaConsumo: 'Consumo Cocina',
+                colorTema: 'negro',
+                sede: 'PRINCIPAL',
+                rol: 'admin',
+                estado: 'activo',
+                diasSuscripcion: 9999,
+                fechaInicioMembresia: new Date().toISOString(),
+                fechaVencimiento: new Date(Date.now() + 9999 * 24 * 60 * 60 * 1000).toISOString(),
+                fechaCreacion: new Date().toISOString()
+              };
+              await setDoc(docRef, nuevoPerfil);
+              setUserProfile(nuevoPerfil);
+              setErrorAuth(null);
+            } else {
+              // CLIENTE SIN NEGOCIO ACTIVO O REVOCADO:
+              console.warn("Acceso denegado: No se encontró ningún negocio vinculado a:", user.email);
+              await firebaseSignOut(auth);
+              setCurrentUser(null);
+              setUserProfile(null);
+              setErrorAuth("Este correo electrónico ya no está vinculado a ningún negocio activo en la plataforma.");
+              setCargandoAuth(false);
+              return;
+            }
           }
         } catch (error) {
           console.error("Error cargando perfil del usuario:", error);
@@ -213,7 +261,31 @@ export function AuthProvider({ children }) {
       throw new Error("Por favor ingresa tu contraseña.");
     }
 
-    return await signInWithEmailAndPassword(auth, emailNormalizado, passwordLimpia);
+    const cred = await signInWithEmailAndPassword(auth, emailNormalizado, passwordLimpia);
+    const user = cred.user;
+
+    // Validación proactiva e inmediata: verificar que este correo sigue activo y vinculado en Firestore
+    const esAdminEmail = emailNormalizado === 'admin-inventario@yopmail.com' || emailNormalizado.includes('admin');
+    if (!esAdminEmail && db) {
+      // 1. ¿Existe algún negocio cuyo email activo sea este?
+      const q = query(collection(db, 'negocios'), where('email', '==', emailNormalizado));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        // 2. Si no coincide por email, verificar si el documento por UID existe pero tiene otro email
+        const docDirecto = await getDoc(doc(db, 'negocios', user.uid));
+        const emailDoc = docDirecto.exists() ? (docDirecto.data().email || '').toLowerCase().trim() : null;
+
+        if (!docDirecto.exists() || (emailDoc && emailDoc !== emailNormalizado)) {
+          await firebaseSignOut(auth);
+          setCurrentUser(null);
+          setUserProfile(null);
+          throw new Error("Este correo ya no tiene acceso porque fue cambiado o desvinculado por el Administrador.");
+        }
+      }
+    }
+
+    return cred;
   };
 
   // Restablecer contraseña enviando enlace a correo (útil para yopmail)
@@ -328,27 +400,42 @@ export function AuthProvider({ children }) {
   };
 
   // Super Admin: Actualizar datos de un cliente (permite cambiar correo y contraseña sin perder ningún dato de su negocio)
-  const actualizarCliente = async (uid, datosActualizados, nuevaPassword = '') => {
+  const actualizarCliente = async (id, datosActualizados, nuevaPassword = '') => {
     if (!esAdmin) throw new Error("No tienes permisos de Administrador.");
-    const docRef = doc(db, 'negocios', uid);
+    const docRef = doc(db, 'negocios', id);
+
+    // Obtener los datos actuales del documento en Firestore
+    const docActualSnap = await getDoc(docRef);
+    const docActual = docActualSnap.exists() ? docActualSnap.data() : {};
 
     if (datosActualizados.email) {
       const emailNormalizado = datosActualizados.email.trim().toLowerCase();
+      const emailAnterior = (docActual.email || '').trim().toLowerCase();
       datosActualizados.email = emailNormalizado;
 
-      // Si el Super Admin le asignó una nueva clave de acceso
-      if (nuevaPassword && nuevaPassword.trim().length >= 6) {
+      // La contraseña a utilizar: la nueva ingresada, o la anterior que ya tenía el cliente
+      const passAUsar = (nuevaPassword || '').trim() || docActual.passwordInicial || datosActualizados.passwordInicial || '';
+
+      // Si cambió el correo O si se proporcionó una nueva contraseña:
+      const cambioEmail = emailAnterior && emailNormalizado !== emailAnterior;
+      const tieneNuevaPass = nuevaPassword && nuevaPassword.trim().length >= 6;
+
+      if ((cambioEmail || tieneNuevaPass) && passAUsar && passAUsar.length >= 6) {
         try {
-          // Provisionar credenciales en Firebase Auth para que el nuevo correo pueda entrar de inmediato
-          await crearUsuarioClienteSecundario(emailNormalizado, nuevaPassword.trim());
-          datosActualizados.passwordInicial = nuevaPassword.trim();
+          // Provisionar / registrar usuario en Firebase Auth con el nuevo correo y contraseña
+          const userAuth = await crearUsuarioClienteSecundario(emailNormalizado, passAUsar);
+          if (userAuth?.uid) {
+            datosActualizados.authUid = userAuth.uid;
+          }
+          datosActualizados.passwordInicial = passAUsar;
         } catch (authErr) {
-          console.warn("Nota al provisionar credenciales secundarias:", authErr.code);
+          console.warn("Nota al provisionar credenciales secundarias en Auth:", authErr.code);
+          // Si auth/email-already-in-use, significa que la cuenta ya existía en Auth
         }
       }
     }
 
-    // Actualizar documento de Firestore (mantiene todo el inventario, productos y proveedores intactos)
+    // Actualizar el documento de Firestore EXISTENTE (mantiene intacto todo el inventario, pedidos y productos)
     await updateDoc(docRef, {
       ...datosActualizados,
       updatedAt: serverTimestamp()
@@ -407,6 +494,8 @@ export function AuthProvider({ children }) {
       diasRestantes,
       membresiaValida,
       cargandoAuth,
+      errorAuth,
+      setErrorAuth,
       todosLosClientes,
       whatsappAdmin: DEFAULT_WHATSAPP_ADMIN,
       iniciarSesion,

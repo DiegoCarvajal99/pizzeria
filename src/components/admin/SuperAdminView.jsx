@@ -251,7 +251,7 @@ export default function SuperAdminView() {
     setClienteEnEdicion(cliente);
     setFormNombreNegocio(cliente.nombreNegocio || '');
     setFormEmail(cliente.email || '');
-    setFormPassword('');
+    setFormPassword(cliente.passwordInicial || '');
     setFormPropietario(cliente.propietario || '');
     setFormTelefono(cliente.telefono || '');
     setFormLogoUrl(cliente.logoUrl || '');
@@ -273,9 +273,19 @@ export default function SuperAdminView() {
       return;
     }
 
+    const docId = clienteEnEdicion.id || clienteEnEdicion.uid;
+    const emailCambio = formEmail.trim().toLowerCase() !== (clienteEnEdicion.email || '').trim().toLowerCase();
+    const passLimpia = formPassword.trim();
+    const passDisponible = passLimpia || clienteEnEdicion.passwordInicial || '';
+
+    if (emailCambio && (!passDisponible || passDisponible.length < 6)) {
+      mostrarAlerta('Al cambiar el correo electrónico del negocio, debes asignar una contraseña (mínimo 6 caracteres) para habilitar el inicio de sesión.', 'warning', 'Contraseña requerida');
+      return;
+    }
+
     setGuardando(true);
     try {
-      await actualizarCliente(clienteEnEdicion.uid || clienteEnEdicion.id, {
+      await actualizarCliente(docId, {
         nombreNegocio: formNombreNegocio.trim().toUpperCase(),
         email: formEmail.trim().toLowerCase(),
         propietario: formPropietario.trim().toUpperCase(),
@@ -287,10 +297,10 @@ export default function SuperAdminView() {
         nombreAreaConsumo: formNombreAreaConsumo,
         colorTema: formColorTema,
         sede: formSede.trim().toUpperCase()
-      }, formPassword.trim());
+      }, passLimpia || clienteEnEdicion.passwordInicial || '');
 
       setClienteEnEdicion(null);
-      mostrarAlerta('Datos del cliente y correo actualizados correctamente', 'success', '¡Guardado!');
+      mostrarAlerta('Datos del negocio y credenciales actualizados correctamente', 'success', '¡Guardado!');
     } catch (err) {
       console.error(err);
       mostrarAlerta('Error actualizando cliente: ' + (err.message || ''), 'danger');

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export default function LoginView() {
-  const { iniciarSesion, recuperarContraseña } = useAuth();
+  const { iniciarSesion, recuperarContraseña, errorAuth, setErrorAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mostrarPassword, setMostrarPassword] = useState(false);
@@ -50,6 +50,7 @@ export default function LoginView() {
     }
 
     setError(null);
+    if (setErrorAuth) setErrorAuth(null);
     setMensajeExito(null);
     setCargando(true);
 
@@ -72,6 +73,8 @@ export default function LoginView() {
       setCargando(false);
     }
   };
+
+  const errorAMostrar = error || errorAuth;
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden selection:bg-white selection:text-black font-body">
@@ -98,10 +101,10 @@ export default function LoginView() {
 
         {/* Tarjeta de Formulario */}
         <div className="bg-zinc-950/90 border border-zinc-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
-          {error && (
+          {errorAMostrar && (
             <div className="mb-5 p-3.5 bg-rose-950/50 border border-rose-800/60 rounded-2xl flex items-start gap-2.5 text-xs text-rose-300 animate-shake">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <span>{errorAMostrar}</span>
             </div>
           )}
 
